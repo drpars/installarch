@@ -1,0 +1,1322 @@
+#!/bin/bash
+
+apptitle="Arch Linux Installation"
+fspkgs=""
+
+mainmenu() {
+  if [ "${1}" = "" ]; then
+    nextitem="."
+  else
+    nextitem=${1}
+  fi
+  options=(
+    "Set Keyboard Layout" ""
+    "Editor" ""
+    "Edit Partitions (cfdisk)" ""
+    "Add External Repository" ""
+    "Select Partition and Install" ""
+    "" ""
+    "Reboot" ""
+  )
+  sel=$(dialog --backtitle "${apptitle}" --title "Main Menu" --cancel-button "Exit" --default-item "${nextitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    case ${sel} in
+    "Set Keyboard Layout")
+      setkeymap
+      nextitem="Editor"
+      ;;
+    "Editor")
+      chooseeditor
+      nextitem="Edit Partitions (cfdisk)"
+      ;;
+    "Edit Partitions (cfdisk)")
+      diskpartcfdisk
+      nextitem="Add External Repository"
+      ;;
+    "Add External Repository")
+      addrepo
+      nextitem="Select Partition and Install"
+      ;;
+    "Select Partition and Install")
+      selectparts
+      nextitem="Reboot"
+      ;;
+    "Reboot")
+      nextitem="Reboot"
+      rebootpc
+      ;;
+    esac
+    mainmenu "${nextitem}"
+  else
+    clear
+  fi
+}
+
+setkeymap() {
+  items=$(find /usr/share/kbd/keymaps/ -type f -printf "%f\n" | sort -V)
+  options=()
+  for item in ${items}; do
+    options+=("${item}" "")
+  done
+  keymap=$(dialog --backtitle "${apptitle}" --title "Set Keyboard Layout" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    clear
+    echo "loadkeys ${keymap}"
+    loadkeys ${keymap}
+  fi
+}
+
+chooseeditor() {
+  options=()
+  options+=("nano" "")
+  options+=("nvim" "")
+  options+=("vim" "")
+  options+=("vi" "")
+  options+=("edit" "")
+  sel=$(dialog --backtitle "${apptitle}" --title "Editor" --menu "" 0 0 0 \
+    "${options[@]}" \
+    3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    clear
+    echo "export EDITOR=${sel}"
+    export EDITOR=${sel}
+    EDITOR=${sel}
+    pressanykey
+  fi
+}
+
+addrepo() {
+  options=("Asus G14 Repository" "")
+  sel=$(dialog --backtitle "${apptitle}" --title "Add External Repository" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    pkgs+=" ${sel}"
+  else
+    return 1
+  fi
+  case ${sel} in
+  "Asus G14 Repository")
+    asusg14repo
+    pressanykey
+    ;;
+  esac
+}
+
+rebootpc() {
+  if (dialog --backtitle "${apptitle}" --title "Reboot" --defaultno --yesno "Reboot ?" 0 0); then
+    clear
+    reboot
+  fi
+}
+
+# -----------------------DISK--------------------------
+
+diskpartcfdisk() {
+  device=$(selectdisk "Edit Partitions (cfdisk)")
+  if [ "$?" = "0" ]; then
+    clear
+    cfdisk ${device}
+  fi
+}
+
+selectdisk() {
+  items=$(lsblk -d -p -n -l -o NAME,SIZE -e 7,11)
+  options=()
+  # IFS_ORIG=$IFS
+  IFS=$'\n'
+  for item in ${items}; do
+    options+=("${item}" "")
+  done
+  # IFS=$IFS_ORIG
+  result=$(dialog --backtitle "${apptitle}" --title "${1}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" != "0" ]; then
+    return 1
+  fi
+  echo ${result% *}
+  return 0
+}
+
+# -----------------------------------------------------
+
+selectparts() {
+  items=$(lsblk -p -n -l -o NAME -e 7,11)
+  options=()
+  for item in ${items}; do
+    options+=("${item}" "")
+  done
+
+  bootdev=$(dialog --backtitle "${apptitle}" --title "Select Partition and Install" --default-item "${bootdev}" --menu "Select boot device" 0 0 0 "none" "-" "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  else
+    if [ "${bootdev}" = "none" ]; then
+      bootdev=
+    fi
+  fi
+
+  swapdev=$(dialog --backtitle "${apptitle}" --title "Select Partition and Install" --default-item "${swapdev}" --menu "Select swap device" 0 0 0 "none" "-" "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  else
+    if [ "${swapdev}" = "none" ]; then
+      swapdev=
+    fi
+  fi
+
+  rootdev=$(dialog --backtitle "${apptitle}" --title "Select Partition and Install" --default-item "${rootdev}" --menu "Select root device" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  fi
+  realrootdev=${rootdev}
+
+  homedev=$(dialog --backtitle "${apptitle}" --title "Select Partition and Install" --menu "Select home device" 0 0 0 "none" "-" "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  else
+    if [ "${homedev}" = "none" ]; then
+      homedev=
+    fi
+  fi
+
+  msg="Selected Devices\n\n"
+  msg=${msg}"boot : "${bootdev}"\n"
+  msg=${msg}"swap : "${swapdev}"\n"
+  msg=${msg}"root : "${rootdev}"\n"
+  msg=${msg}"home : "${homedev}"\n\n"
+  if (dialog --backtitle "${apptitle}" --title "Select Partition and Install" --yesno "${msg}" 0 0); then
+    isnvme=0
+    if [ "${bootdev::8}" == "/dev/nvm" ]; then
+      isnvme=1
+    fi
+    if [ "${rootdev::8}" == "/dev/nvm" ]; then
+      isnvme=1
+    fi
+    mountmenu
+  fi
+}
+
+mountmenu() {
+  if [ "${1}" = "" ]; then
+    nextitem="."
+  else
+    nextitem=${1}
+  fi
+  options=()
+  options+=("Format Devices" "")
+  options+=("Mount" "Install or Config")
+  sel=$(dialog --backtitle "${apptitle}" --title "Format and Mount" --cancel-button "Back" --default-item "${nextitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    case ${sel} in
+    "Format Devices")
+      formatdevices
+      nextitem="Mount"
+      ;;
+    "Mount")
+      mountparts
+      nextitem="Mount"
+      ;;
+    esac
+    mountmenu "${nextitem}"
+  fi
+}
+
+# -----------------------------------------------------
+
+formatdevices() {
+  if (dialog --backtitle "${apptitle}" --title "Format Devices" --defaultno --yesno "Warning, all data on selected devices will be erased ! \nFormat devices ?" 0 0); then
+    fspkgs=""
+    if [ ! "${bootdev}" = "" ]; then
+      formatbootdevice Boot ${bootdev}
+    fi
+    if [ ! "${swapdev}" = "" ]; then
+      formatswapdevice Swap ${swapdev}
+    fi
+    formatdevice Root ${rootdev}
+    if [ ! "${homedev}" = "" ]; then
+      formatdevice Home ${homedev}
+    fi
+  fi
+}
+
+formatbootdevice() {
+  options=()
+  if [ "${efimode}" == "1" ] || [ "${efimode}" = "2" ]; then
+    options+=("fat32" "(EFI)")
+  fi
+  options+=("ext2" "")
+  options+=("ext3" "")
+  options+=("ext4" "")
+  if [ ! "${efimode}" = "1" ] && [ ! "${efimode}" = "2" ]; then
+    options+=("fat32" "(EFI)")
+  fi
+  sel=$(dialog --backtitle "${apptitle}" --title "Format Device" --menu "Select partition format for : ${1} (${2})" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  fi
+  clear
+  echo "Formatting partition ${2} as ${sel}"
+  echo "----------------------------------------------"
+  case ${sel} in
+  ext2)
+    echo "mkfs.ext2 -L SYSTEM ${2}"
+    mkfs.ext2 -L SYSTEM ${2}
+    ;;
+  ext3)
+    echo "mkfs.ext3 -L SYSTEM ${2}"
+    mkfs.ext3 -L SYSTEM ${2}
+    ;;
+  ext4)
+    echo "mkfs.ext4 -L SYSTEM ${2}"
+    mkfs.ext4 -L SYSTEM ${2}
+    ;;
+  fat32)
+    fspkgs="${fspkgs[@]} dosfstools"
+    echo "mkfs.fat -n SYSTEM ${2}"
+    mkfs.fat -n SYSTEM ${2}
+    ;;
+  esac
+  echo ""
+  pressanykey
+}
+formatswapdevice() {
+  options=()
+  options+=("swap" "")
+  sel=$(dialog --backtitle "${apptitle}" --title "Format Device" --menu "Select partition format for : ${1} (${2})" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  fi
+  clear
+  echo "Formatting partition ${swapdev} as swap"
+  echo "----------------------------------------------------"
+  case ${sel} in
+  swap)
+    echo "mkswap ${swapdev}"
+    mkswap ${swapdev}
+    echo ""
+    pressanykey
+    ;;
+  esac
+  clear
+}
+formatdevice() {
+  options=()
+  options+=("btrfs" "")
+  options+=("ext4" "")
+  options+=("ext3" "")
+  options+=("ext2" "")
+  options+=("xfs" "")
+  options+=("f2fs" "")
+  options+=("jfs" "")
+  options+=("reiserfs" "")
+  sel=$(dialog --backtitle "${apptitle}" --title "Format Device" --menu "Select partition format for : ${1} (${2})" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  fi
+  clear
+  echo "Formatting partition ${2} as ${sel}"
+  echo "----------------------------------------------"
+  case ${sel} in
+  btrfs)
+    fspkgs="${fspkgs[@]} btrfs-progs"
+    echo "mkfs.btrfs -L ${1} -f ${2}"
+    mkfs.btrfs -L ${1} -f ${2}
+    if [ "${1}" = "root" ]; then
+      echo "mount ${2} /mnt"
+      echo "btrfs subvolume create /mnt/root"
+      echo "btrfs subvolume set-default /mnt/root"
+      echo "umount /mnt"
+      mount ${2} /mnt
+      btrfs subvolume create /mnt/root
+      btrfs subvolume set-default /mnt/root
+      umount /mnt
+    fi
+    ;;
+  ext4)
+    echo "mkfs.ext4 -L ${1} ${2}"
+    mkfs.ext4 -L ${1} ${2}
+    ;;
+  ext3)
+    echo "mkfs.ext3 -L ${1} ${2}"
+    mkfs.ext3 -L ${1} ${2}
+    ;;
+  ext2)
+    echo "mkfs.ext2 -L ${1} ${2}"
+    mkfs.ext2 -L ${1} ${2}
+    ;;
+  xfs)
+    fspkgs="${fspkgs[@]} xfsprogs"
+    echo "mkfs.xfs -L ${1} -f ${2}"
+    mkfs.xfs -L ${1} -f ${2}
+    ;;
+  f2fs)
+    fspkgs="${fspkgs[@]} f2fs-tools"
+    echo "mkfs.f2fs -l ${1} -f $2"
+    mkfs.f2fs -l ${1} -f $2
+    ;;
+  jfs)
+    fspkgs="${fspkgs[@]} jfsutils"
+    echo "mkfs.jfs -L ${1} -f ${2}"
+    mkfs.jfs -L ${1} -f ${2}
+    ;;
+  reiserfs)
+    fspkgs="${fspkgs[@]} reiserfsprogs"
+    echo "mkfs.reiserfs -l ${1} -f ${2}"
+    mkfs.reiserfs -l ${1} -f ${2}
+    ;;
+  esac
+  echo ""
+  pressanykey
+}
+
+mountparts() {
+  clear
+  echo "mount ${rootdev} /mnt"
+  mount ${rootdev} /mnt
+  echo "mkdir /mnt/{efi,home}"
+  mkdir /mnt/{efi,home} 2>/dev/null
+  if [ ! "${bootdev}" = "" ]; then
+    echo "mount ${bootdev} /mnt/efi"
+    mount ${bootdev} /mnt/efi
+  fi
+  if [ ! "${swapdev}" = "" ]; then
+    echo "swapon ${swapdev}"
+    swapon ${swapdev}
+  fi
+  if [ ! "${homedev}" = "" ]; then
+    echo "mount ${homedev} /mnt/home"
+    mount ${homedev} /mnt/home
+  fi
+  pressanykey
+  installmenu
+}
+
+installmenu() {
+  if [ "${1}" = "" ]; then
+    nextitem="Install Arch Linux"
+  else
+    nextitem=${1}
+  fi
+  options=(
+    "Edit mirrorlist" ""
+    "Parallel Downloads" ""
+    "Install Arch Linux" "pacstrap"
+    "Config Arch Linux" ""
+  )
+  sel=$(dialog --backtitle "${apptitle}" --title "Install Menu" --cancel-button "Unmount" --default-item "${nextitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    case ${sel} in
+    "Edit mirrorlist")
+      ${EDITOR} /etc/pacman.d/mirrorlist
+      nextitem="Install Arch Linux"
+      ;;
+    "Parallel Downloads")
+      paralleldownloads
+      nextitem="Install Arch Linux"
+      ;;
+    "Install Arch Linux")
+      if (installbase); then
+        nextitem="Config Arch Linux"
+      fi
+      ;;
+    "Config Arch Linux")
+      archmenu
+      nextitem="Install Arch Linux"
+      ;;
+    esac
+    installmenu "${nextitem}"
+  else
+    unmountdevices
+  fi
+}
+
+paralleldownloads() {
+  numpkg=$(dialog --backtitle "${apptitle}" --title "Parallel Downloads" --inputbox "" 0 0 "5" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    if [[ "$numpkg" =~ ^[1-9][0-9]*$ ]]; then
+      sed -i "s/.*ParallelDownloads.*/ParallelDownloads = ${numpkg}/" /etc/pacman.conf
+    else
+      clear
+      unset numpkg
+      echo "Please enter a number greater than 0"
+      pressanykey
+    fi
+  fi
+}
+
+installbase() {
+  pkgs="base base-devel"
+  options=()
+  options+=("linux" "")
+  options+=("linux-lts" "")
+  options+=("linux-zen" "")
+  options+=("linux-hardened" "")
+  options+=("linux-g14" "")
+  kernel=$(dialog --backtitle "${apptitle}" --title "Kernel" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    pkgs+=" ${kernel}"
+  else
+    return 1
+  fi
+  echo "$kernel" >kernelsel
+  options=()
+  if [[ "${kernel}" == "linux" ]]; then
+    options+=("linux-headers" "" on)
+  fi
+  if [[ "${kernel}" == "linux-lts" ]]; then
+    options+=("linux-lts-headers" "" on)
+  fi
+  if [[ "${kernel}" == "linux-zen" ]]; then
+    options+=("linux-zen-headers" "" on)
+  fi
+  if [[ "${kernel}" == "linux-hardened" ]]; then
+    options+=("linux-hardened-headers" "" on)
+  fi
+  if [[ "${kernel}" == "linux-g14" ]]; then
+    options+=("linux-g14-headers" "" on)
+  fi
+  sel=$(dialog --backtitle "${apptitle}" --title "Kernel Headers" --checklist "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  fi
+  for itm in $sel; do
+    pkgs="$pkgs $(echo $itm | sed 's/"//g')"
+  done
+
+  options=()
+  options+=("linux-firmware" "" on)
+  sel=$(dialog --backtitle "${apptitle}" --title "Firmwares" --checklist "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  fi
+  for itm in $sel; do
+    pkgs="$pkgs $(echo $itm | sed 's/"//g')"
+  done
+
+  options=()
+  if [[ "${fspkgs}" == *"dosfstools"* ]]; then
+    options+=("dosfstools" "" on)
+  else
+    options+=("dosfstools" "" off)
+  fi
+  if [[ "${fspkgs}" == *"btrfs-progs"* ]]; then
+    options+=("btrfs-progs" "" on)
+  else
+    options+=("btrfs-progs" "" off)
+  fi
+  if [[ "${fspkgs}" == *"xfsprogs"* ]]; then
+    options+=("xfsprogs" "" on)
+  else
+    options+=("xfsprogs" "" off)
+  fi
+  if [[ "${fspkgs}" == *"f2fs-tools"* ]]; then
+    options+=("f2fs-tools" "" on)
+  else
+    options+=("f2fs-tools" "" off)
+  fi
+  if [[ "${fspkgs}" == *"jfsutils"* ]]; then
+    options+=("jfsutils" "" on)
+  else
+    options+=("jfsutils" "" off)
+  fi
+  if [[ "${fspkgs}" == *"reiserfsprogs"* ]]; then
+    options+=("reiserfsprogs" "" on)
+  else
+    options+=("reiserfsprogs" "" off)
+  fi
+  options+=("lvm2" "" off)
+  options+=("dmraid" "" off)
+  sel=$(dialog --backtitle "${apptitle}" --title "File Systems" --checklist "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  fi
+  for itm in $sel; do
+    pkgs="$pkgs $(echo $itm | sed 's/"//g')"
+  done
+
+  clear
+  echo "pacstrap /mnt ${pkgs}"
+  pacstrap /mnt ${pkgs}
+  if [ ! -z $numpkg ]; then
+    sed -i "s/.*ParallelDownloads.*/ParallelDownloads = ${numpkg}/" /mnt/etc/pacman.conf
+  fi
+  pressanykey
+}
+
+unmountdevices() {
+  clear
+  echo "umount -R /mnt"
+  umount -R /mnt
+  if [ ! "${swapdev}" = "" ]; then
+    echo "swapoff ${swapdev}"
+    swapoff ${swapdev}
+  fi
+  pressanykey
+}
+
+archmenu() {
+  if [ "${1}" = "" ]; then
+    nextitem="."
+  else
+    nextitem=${1}
+  fi
+  options=()
+  options+=("Set Computer Name" "/etc/hostname")
+  options+=("Set Keyboard Layout" "/etc/vconsole.conf")
+  options+=("Set Font" "/etc/vconsole.conf")
+  options+=("Set Locale" "/etc/locale.conf, /etc/locale.gen")
+  options+=("Set Time" "/etc/localtime")
+  options+=("Set root password" "")
+  options+=("Add User" "Home user")
+  options+=("Generate fstab" "")
+  options+=("Generate mkinitcpio.conf" "")
+  options+=("Create swapfile" "")
+  options+=("Add External Repository" "")
+  options+=("Edit fstab" "")
+  options+=("Edit mkinitcpio.conf" "")
+  options+=("Edit mirrorlist" "")
+  options+=("Bootloader" "")
+  options+=("Extras" "")
+  sel=$(dialog --backtitle "${apptitle}" --title "Arch Install Menu" --cancel-button "Back" --default-item "${nextitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    case ${sel} in
+    "Set Computer Name")
+      archsethostname
+      nextitem="Set Keyboard Layout"
+      ;;
+    "Set Keyboard Layout")
+      archsetkeymap
+      nextitem="Set Font"
+      ;;
+    "Set Font")
+      archsetfont
+      nextitem="Set Locale"
+      ;;
+    "Set Locale")
+      archsetlocale
+      nextitem="Set Time"
+      ;;
+    "Set Time")
+      archsettime
+      nextitem="Set root password"
+      ;;
+    "Set root password")
+      archsetrootpassword
+      nextitem="Add User"
+      ;;
+    "Add User")
+      archcreateuser
+      nextitem="Generate fstab"
+      ;;
+
+    "Generate fstab")
+      archgenfstabmenu
+      nextitem="Generate mkinitcpio.conf"
+      ;;
+    "Generate mkinitcpio.conf")
+      archgenmkinitcpio
+      nextitem="Create swapfile"
+      ;;
+    "Create swapfile")
+      archcreateswapfile
+      nextitem="Add External Repository"
+      ;;
+    "Add External Repository")
+      addrepochroot
+      nextitem="Edit fstab"
+      ;;
+    "Edit fstab")
+      ${EDITOR} /mnt/etc/fstab
+      nextitem="Edit fstab"
+      ;;
+    "Edit mkinitcpio.conf")
+      archeditmkinitcpio
+      nextitem="Edit mkinitcpio.conf"
+      ;;
+    "Edit mirrorlist")
+      ${EDITOR} /mnt/etc/pacman.d/mirrorlist
+      nextitem="Edit mirrorlist"
+      ;;
+    "Bootloader")
+      archbootloadermenu
+      nextitem="Extras"
+      ;;
+    "Extras")
+      archextrasmenu
+      nextitem="Extras"
+      ;;
+    esac
+    archmenu "${nextitem}"
+  fi
+}
+
+archchroot() {
+  echo "arch-chroot /mnt /root"
+  cp ${0} /mnt/root
+  chmod 755 /mnt/root/$(basename "${0}")
+  echo "dialog is required, it will be installed as dep. Then it will removed when cleaning orphan."
+  echo "arch-chroot /mnt pacman -S --asdeps --needed --noconfirm dialog"
+  arch-chroot /mnt pacman -S --asdeps --needed --noconfirm dialog
+  arch-chroot /mnt /root/$(basename "${0}") --chroot ${1} ${2}
+  rm /mnt/root/$(basename "${0}")
+  echo "exit"
+}
+
+archsethostname() {
+  hostname=$(dialog --backtitle "${apptitle}" --title "Set Computer Name" --inputbox "" 0 0 "archlinux" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    clear
+    echo "echo \"${hostname}\" > /mnt/etc/hostname"
+    echo "${hostname}" >/mnt/etc/hostname
+    pressanykey
+  fi
+}
+
+archsetkeymap() {
+  items=$(find /usr/share/kbd/keymaps/ -type f -printf "%f\n" | sort -V)
+  options=()
+  defsel=""
+  for item in ${items}; do
+    if [ "${item%%.*}" == "${keymap}" ]; then
+      defsel="${item%%.*}"
+    fi
+    options+=("${item%%.*}" "")
+  done
+  keymap=$(dialog --backtitle "${apptitle}" --title "Set Keyboard Layout" --default-item "${defsel}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    clear
+    echo "echo \"KEYMAP=${keymap}\" > /mnt/etc/vconsole.conf"
+    echo "KEYMAP=${keymap}" >/mnt/etc/vconsole.conf
+    pressanykey
+  fi
+}
+
+archsetfont() {
+  items=$(find /usr/share/kbd/consolefonts/*.psfu.gz -printf "%f\n")
+
+  options=()
+  for item in ${items}; do
+    options+=("${item%%.*}" "")
+  done
+  vcfont=$(dialog --backtitle "${apptitle}" --title "Set Font" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    clear
+    echo "echo \"FONT=${vcfont}\" >> /mnt/etc/vconsole.conf"
+    echo "FONT=${vcfont}" >>/mnt/etc/vconsole.conf
+    pressanykey
+  fi
+}
+
+archsetlocale() {
+  items=$(ls /usr/share/i18n/locales)
+  options=()
+  defsel=""
+  for item in ${items}; do
+    if [ "${defsel}" == "" ] && [ "${keymap::2}" == "${item::2}" ]; then
+      defsel="${item}"
+    fi
+    options+=("${item}" "")
+  done
+  locale=$(dialog --backtitle "${apptitle}" --title "Set Locale" --default-item "${defsel}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    clear
+    echo "echo \"LANG=${locale}.UTF-8\" > /mnt/etc/locale.conf"
+    echo "LANG=${locale}.UTF-8" >/mnt/etc/locale.conf
+    echo "echo \"LC_COLLATE=C\" >> /mnt/etc/locale.conf"
+    echo "LC_COLLATE=C" >>/mnt/etc/locale.conf
+    echo "sed -i '/#${locale}.UTF-8/s/^#//g' /mnt/etc/locale.gen"
+    sed -i '/#'${locale}'.UTF-8/s/^#//g' /mnt/etc/locale.gen
+    archchroot setlocale
+    pressanykey
+  fi
+}
+archsetlocalechroot() {
+  echo "locale-gen"
+  locale-gen
+  exit
+}
+
+archsettime() {
+  items=$(ls -l /mnt/usr/share/zoneinfo/ | grep '^d' | gawk -F':[0-9]* ' '/:/{print $2}')
+  options=()
+  for item in ${items}; do
+    options+=("${item}" "")
+  done
+
+  timezone=$(dialog --backtitle "${apptitle}" --title "Set Time" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  fi
+
+  items=$(ls /mnt/usr/share/zoneinfo/${timezone}/)
+  options=()
+  for item in ${items}; do
+    options+=("${item}" "")
+  done
+
+  timezone=${timezone}/$(dialog --backtitle "${apptitle}" --title "Set Time" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  fi
+
+  clear
+  echo "ln -sf /mnt/usr/share/zoneinfo/${timezone} /mnt/etc/localtime"
+  ln -sf /usr/share/zoneinfo/${timezone} /mnt/etc/localtime
+  echo "systemctl --root /mnt enable systemd-timesyncd"
+  systemctl --root /mnt enable systemd-timesyncd
+  pressanykey
+
+  options=()
+  options+=("UTC" "")
+  options+=("Local" "")
+  sel=$(dialog --backtitle "${apptitle}" --title "Set Time" --menu "Hardware clock :" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  fi
+
+  clear
+  case ${sel} in
+  "UTC")
+    archchroot settimeutc
+    ;;
+  "Local")
+    archchroot settimelocal
+    ;;
+  esac
+  pressanykey
+}
+archsettimeutcchroot() {
+  echo "hwclock --systohc --utc"
+  hwclock --systohc --utc
+  exit
+}
+archsettimelocalchroot() {
+  echo "hwclock --systohc --localtime"
+  hwclock --systohc --localtime
+  exit
+}
+
+archsetrootpassword() {
+  clear
+  archchroot setrootpassword
+  pressanykey
+}
+archsetrootpasswordchroot() {
+  echo "passwd root"
+  passed=1
+  while [[ ${passed} != 0 ]]; do
+    passwd root
+    passed=$?
+  done
+  exit
+}
+
+archcreateuser() {
+  username=$(dialog --backtitle "${apptitle}" --title "User Name :" --inputbox "" 0 0 "" 3>&1 1>&2 2>&3)
+
+  userpasswrd=$(dialog --backtitle "${apptitle}" --title "User Password :" --inputbox "" 0 0 "" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+
+    msg="User information to be created!\n\n"
+    msg=${msg}"Name : "${username}"\n"
+    msg=${msg}"Password : "${userpasswrd}"\n"
+    if (dialog --backtitle "${apptitle}" --title "Do you accept ?" --yesno "${msg}" 0 0); then
+      clear
+      echo "arch-chroot /mnt useradd -m $username"
+      arch-chroot /mnt useradd -m "$username"
+      if (dialog --backtitle "${apptitle}" --title "Grant superuser privilege for :" --yesno "$username\n\n" 0 0); then
+        clear
+        echo "sed -i '/# %wheel ALL=(ALL:ALL) ALL/s/^# //g' /mnt/etc/sudoers"
+        sed -i '/# %wheel ALL=(ALL:ALL) ALL/s/^# //g' /mnt/etc/sudoers
+        echo "arch-chroot /mnt usermod -aG wheel $username"
+        arch-chroot /mnt usermod -aG wheel $username
+      fi
+    fi
+    pressanykey
+  fi
+}
+
+archgenfstabmenu() {
+  options=()
+  options+=("UUID" "genfstab -U")
+  options+=("LABEL" "genfstab -L")
+  options+=("PARTUUID" "genfstab -t PARTUUID")
+  options+=("PARTLABEL" "genfstab -t PARTLABEL")
+  sel=$(dialog --backtitle "${apptitle}" --title "Generate fstab" --cancel-button "Back" --default-item "${nextitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    case ${sel} in
+    "UUID")
+      clear
+      echo "genfstab -U -p /mnt > /mnt/etc/fstab"
+      genfstab -U -p /mnt >/mnt/etc/fstab
+      ;;
+    "LABEL")
+      clear
+      echo "genfstab -L -p /mnt > /mnt/etc/fstab"
+      genfstab -L -p /mnt >/mnt/etc/fstab
+      ;;
+    "PARTUUID")
+      clear
+      echo "genfstab -t PARTUUID -p /mnt > /mnt/etc/fstab"
+      genfstab -t PARTUUID -p /mnt >/mnt/etc/fstab
+      ;;
+    "PARTLABEL")
+      clear
+      echo "genfstab -t PARTLABEL -p /mnt > /mnt/etc/fstab"
+      genfstab -t PARTLABEL -p /mnt >/mnt/etc/fstab
+      ;;
+    esac
+  fi
+  pressanykey
+}
+
+archgenmkinitcpio() {
+  clear
+  kernelsel="$(cat kernelsel)"
+  sed -i -e 's/base udev/base systemd/g' /mnt/etc/mkinitcpio.conf
+  # Change the preset file to generate a Unified Kernel Image
+  sed -i \
+    -e '/^#ALL_config/s/^#//' \
+    -e '/^#default_uki/s/^#//' \
+    -e '/^#default_options/s/^#//' \
+    -e 's/default_image=/#default_image=/g' \
+    -e "s/PRESETS=('default' 'fallback')/PRESETS=('default')/g" \
+    /mnt/etc/mkinitcpio.d/"$kernelsel".preset
+  # Read the UKI setting and create the folder structure otherwise mkinitcpio will crash
+  declare $(grep default_uki /mnt/etc/mkinitcpio.d/"$kernelsel".preset)
+  arch-chroot /mnt mkdir -p "$(dirname "${default_uki//\"/}")"
+  archchroot genmkinitcpio
+  pressanykey
+}
+archgenmkinitcpiochroot() {
+  echo "mkinitcpio -P"
+  mkinitcpio -P
+  exit
+}
+
+archcreateswapfile() {
+  swapfile=$(dialog --backtitle "${apptitle}" --title "Enter swapfile size (MB) :" --inputbox "" 0 0 "8192" 3>&1 1>&2 2>&3)
+  if [[ "$swapfile" =~ ^[1-9][0-9]*$ ]]; then
+    clear
+    echo "dd if=/dev/zero of=/mnt/swapfile bs=1M count="$swapfile" status=progress"
+    echo "chmod 600 /mnt/swapfile"
+    echo "mkswap /mnt/swapfile"
+    echo "swapon /mnt/swapfile"
+    dd if=/dev/zero of=/mnt/swapfile bs=1M count="$swapfile" status=progress
+    chmod 600 /mnt/swapfile
+    mkswap /mnt/swapfile
+    swapon /mnt/swapfile
+  else
+    clear
+    unset swapfile
+    echo "Please enter a valid number"
+    pressanykey
+  fi
+}
+
+addrepochroot() {
+  options=("Asus G14 Repository" "")
+  sel=$(dialog --backtitle "${apptitle}" --title "Add External Repository" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    pkgs+=" ${sel}"
+  else
+    return 1
+  fi
+  case ${sel} in
+  "Asus G14 Repository")
+    archchroot asusg14repo
+    pressanykey
+    ;;
+  esac
+}
+
+asusg14repo() {
+  clear
+  # Adding asus-linux repository
+  pacman-key --recv-keys 8F654886F17D497FEFE3DB448B15A6B0E9A3FA35
+  pacman-key --finger 8F654886F17D497FEFE3DB448B15A6B0E9A3FA35
+  pacman-key --lsign-key 8F654886F17D497FEFE3DB448B15A6B0E9A3FA35
+  pacman-key --finger 8F654886F17D497FEFE3DB448B15A6B0E9A3FA35
+  printf "%s\n" "[g14]" "Server = https://naru.jhyub.dev/\$repo" "Server = https://arch.asus-linux.org" >>/etc/pacman.conf
+  pacman -Sy
+  pressanykey
+}
+
+archeditmkinitcpio() {
+  ${EDITOR} /mnt/etc/mkinitcpio.conf
+  if (dialog --backtitle "${apptitle}" --title "Edit mkinitcpio.conf" --yesno "Generate mkinitcpio ?" 0 0); then
+    clear
+    archchroot genmkinitcpio
+    pressanykey
+  fi
+}
+
+archbootloadermenu() {
+  options=()
+  options+=("grub" "")
+  if [ "${efimode}" == "1" ]; then
+    options+=("systemd-boot" "")
+    options+=("refind" "")
+  fi
+  sel=$(dialog --backtitle "${apptitle}" --title "Choose bootloader" --cancel-button "Back" --menu "" 0 0 0 \
+    "${options[@]}" \
+    3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    case ${sel} in
+    "grub") archbootloadergrubmenu ;;
+    "systemd-boot") archbootloadersystemdbmenu ;;
+    "refind") archbootloaderrefindmenu ;;
+    esac
+  fi
+}
+
+archbootloadergrubmenu() {
+  if [ "${1}" = "" ]; then
+    nextblitem="."
+  else
+    nextblitem=${1}
+  fi
+  options=()
+  options+=("Install grub" "pacstrap grub (efibootmgr), grub-mkconfig")
+  options+=("Edit grub" "")
+  sel=$(dialog --backtitle "${apptitle}" --title "Grub Install Menu" --cancel-button "Back" --default-item "${nextblitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    case ${sel} in
+    "Install grub")
+      archgrubinstall
+      nextblitem="Edit grub"
+      ;;
+    "Edit grub")
+      ${EDITOR} /mnt/etc/default/grub
+      if (dialog --backtitle "${apptitle}" --title "Install grub" --yesno "Run grub-mkconfig ?" 0 0); then
+        clear
+        archchroot grubinstall
+        pressanykey
+      fi
+      nextblitem=""
+      ;;
+    esac
+    archbootloadergrubmenu "${nextblitem}"
+  fi
+}
+
+archgrubinstall() {
+  clear
+  echo "pacstrap /mnt grub"
+  pacstrap /mnt grub
+  pressanykey
+
+  if [ "${eficomputer}" == "1" ]; then
+    if [ "${efimode}" == "1" ] || [ "${efimode}" == "2" ]; then
+      if (dialog --backtitle "${apptitle}" --title "Install efibootmgr" --yesno "efibootmgr is required for EFI computers." 0 0); then
+        clear
+        echo "pacstrap /mnt efibootmgr"
+        pacstrap /mnt efibootmgr
+        pressanykey
+      fi
+    else
+      if (dialog --backtitle "${apptitle}" --title "Install efibootmgr" --defaultno --yesno "efibootmgr is required for EFI computers." 0 0); then
+        clear
+        echo "pacstrap /mnt efibootmgr"
+        pacstrap /mnt efibootmgr
+        pressanykey
+      fi
+    fi
+  fi
+  clear
+  archchroot grubinstall
+  pressanykey
+}
+archgrubinstallchroot() {
+  echo "mkdir /efi/grub"
+  echo "grub-mkconfig -o /efi/grub/grub.cfg"
+  mkdir /efi/grub
+  grub-mkconfig -o /efi/grub/grub.cfg
+  exit
+}
+
+archbootloadersystemdbmenu() {
+  if [ "${1}" = "" ]; then
+    nextblitem="."
+  else
+    nextblitem=${1}
+  fi
+  options=()
+  options+=("Install systemd-boot" "bootctl install")
+  options+=("Edit loader.conf" "")
+  options+=("Edit entries" "")
+  options+=("Edit /etc/kernel/cmdline" "")
+  sel=$(dialog --backtitle "${apptitle}" --title "Systemd-boot Install Menu" --cancel-button "Back" --default-item "${nextblitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    case ${sel} in
+    "Install systemd-boot")
+      archsystemdinstall
+      nextblitem="Edit loader.conf"
+      ;;
+    "Edit loader.conf")
+      ${EDITOR} /mnt/boot/loader/loader.conf
+      nextblitem="Edit entries"
+      ;;
+    "Edit entries")
+      ${EDITOR} /mnt/boot/loader/entries/*
+      nextblitem="Edit /etc/kernel/cmdline"
+      ;;
+    "Edit /etc/kernel/cmdline")
+      ${EDITOR} /mnt//etc/kernel/cmdline
+      nextblitem="Edit /etc/kernel/cmdline"
+      ;;
+    esac
+    archbootloadersystemdbmenu "${nextblitem}"
+  fi
+}
+
+archsystemdinstall() {
+  clear
+  archchroot systemdbootloaderinstall ${realrootdev}
+  pacstrap /mnt efibootmgr
+
+  partuuid=$(blkid -s PARTUUID -o value ${realrootdev})
+  parttype=$(blkid -s TYPE -o value ${rootdev})
+
+  echo "printf "%s\n" "timeout menu-force" "console-mode max" > /mnt/efi/loader/loader.conf"
+  # echo "cp /mnt/usr/share/systemd/bootctl/arch.conf /mnt/efi/loader/entries"
+  echo "mkdir -p /mnt/etc/pacman.d/hooks/"
+  echo "printf "%s\n" "[Trigger]" "Type = Package" "Operation = Upgrade" "Target = systemd" "" "[Action]" "Description = Gracefully upgrading systemd-boot..." "When = PostTransaction" "Exec = /usr/bin/systemctl restart systemd-boot-update.service" > /mnt/etc/pacman.d/hooks/95-systemd-boot.hook"
+  echo "echo "root=PARTUUID=$partuuid quiet rw rootfstype=$parttype systemd.unit=graphical.target" > /mnt/etc/kernel/cmdline"
+
+  printf "%s\n" "timeout  menu-force" "console-mode  max" >/mnt/efi/loader/loader.conf
+  # cp /mnt/usr/share/systemd/bootctl/arch.conf /mnt/boot/loader/entries
+  # Adds a pacman hook which is executed every time systemd is upgraded.
+  mkdir -p /mnt/etc/pacman.d/hooks/
+  printf "%s\n" "[Trigger]" "Type = Package" "Operation = Upgrade" "Target = systemd" "" "[Action]" "Description = Gracefully upgrading systemd-boot..." "When = PostTransaction" "Exec = /usr/bin/systemctl restart systemd-boot-update.service" >/mnt/etc/pacman.d/hooks/95-systemd-boot.hook
+  echo "root=PARTUUID=$partuuid quiet rw rootfstype=$parttype systemd.unit=graphical.target" >/mnt/etc/kernel/cmdline
+  pressanykey
+}
+archsystemdinstallchroot() {
+  echo "bootctl --efi-boot-option-description="Arch Linux" install"
+  bootctl --esp-path=/efi --efi-boot-option-description="Arch Linux" install
+  isvbox=$(lspci | grep "VirtualBox G")
+  if [ "${isvbox}" ]; then
+    echo "VirtualBox detected, creating startup.nsh..."
+    echo "\EFI\systemd\systemd-bootx64.efi" >/boot/startup.nsh
+  fi
+}
+
+archbootloaderrefindmenu() {
+  if [ "${1}" = "" ]; then
+    nextblitem="."
+  else
+    nextblitem=${1}
+  fi
+  options=()
+  options+=("Install refind" "pacstrap refind-efi")
+  options+=("Edit refind_linux.conf" "")
+  sel=$(dialog --backtitle "${apptitle}" --title "rEFInd Install Menu" --cancel-button "Back" --default-item "${nextblitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    case ${sel} in
+    "Install refind")
+      archrefindinstall
+      nextblitem="Edit refind_linux.conf"
+      ;;
+    "Edit refind_linux.conf")
+      ${EDITOR} /mnt/boot/refind_linux.conf
+      nextblitem="Edit refind_linux.conf"
+      ;;
+    esac
+    archbootloaderrefindmenu "${nextblitem}"
+  fi
+
+}
+archrefindinstall() {
+  clear
+
+  echo "pacstrap /mnt refind"
+  echo "archchroot refindbootloaderinstall ${realrootdev}"
+  echo "echo \"\\\"Arch Linux         \\\" \\\"root=UUID=${rootuuid} rw add_efi_memmap\\\"\" > /mnt/efi/refind_linux.conf"
+  echo "echo \"\\\"Arch Linux Fallback\\\" \\\"root=UUID=${rootuuid} rw add_efi_memmap initrd=/initramfs-linux-fallback.img\\\"\" >> /mnt/efi/refind_linux.conf"
+  echo "echo \"\\\"Arch Linux Terminal\\\" \\\"root=UUID=${rootuuid} rw add_efi_memmap systemd.unit=multi-user.target\\\"\" >> /mnt/efi/refind_linux.conf"
+
+  pacstrap /mnt refind-efi
+  archchroot refindbootloaderinstall ${realrootdev}
+  rootuuid=$(blkid -s UUID -o value ${realrootdev})
+  echo "\"Arch Linux         \" \"root=UUID=${rootuuid} rw add_efi_memmap\"" >/mnt/efi/refind_linux.conf
+  echo "\"Arch Linux Fallback\" \"root=UUID=${rootuuid} rw add_efi_memmap initrd=/initramfs-linux-fallback.img\"" >>/mnt/efi/refind_linux.conf
+  echo "\"Arch Linux Terminal\" \"root=UUID=${rootuuid} rw add_efi_memmap systemd.unit=multi-user.target\"" >>/mnt/efi/refind_linux.conf
+  pressanykey
+}
+archrefindinstallchroot() {
+  #--usedefault /dev/sdXY --alldrivers
+  echo "refind-install"
+  refind-install
+  isvbox=$(lspci | grep "VirtualBox G")
+  if [ "${isvbox}" ]; then
+    echo "VirtualBox detected, creating startup.nsh..."
+    echo "\EFI\refind\refind_x64.efi" >/efi/startup.nsh
+  fi
+}
+
+archextrasmenu() {
+  pkgs=""
+  options=()
+  options+=("intel-ucode" "" off)
+  options+=("amd-ucode" "" off)
+  options+=("sbctl" "" on)
+  options+=("edk2-shell" "" on)
+  options+=("efibootmgr" "" on)
+  options+=("iwd" "Instead of networkmanager" on)
+  options+=("dhcpcd" "Instead of networkmanager" on)
+  options+=("wpa_supplicant" "Instead of networkmanager" on)
+  options+=("ifplugd" "Instead of networkmanager" on)
+  options+=("netctl" "Instead of networkmanager" on)
+  options+=("openssh" "" on)
+  options+=("git" "" on)
+  options+=("neovim" "" on)
+  options+=("xdg-user-dirs" "" on)
+  options+=("xdg-utils" "" on)
+  options+=("util-linux" "" on)
+  options+=("coreutils" "" on)
+  options+=("usbutils" "" on)
+  options+=("procps-ng" "" on)
+  options+=("samba" "" on)
+  options+=("nfs-utils" "" on)
+  options+=("bind" "" on)
+  options+=("man-db" "" on)
+  options+=("man-pages" "" on)
+  options+=("eza" "" on)
+  options+=("bluez" "" on)
+  options+=("bluez-utils" "" on)
+  options+=("networkmanager" "" off)
+  sel=$(dialog --backtitle "${apptitle}" --title "Extras" --checklist "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ ! "$?" = "0" ]; then
+    return 1
+  fi
+  for itm in $sel; do
+    pkgs="$pkgs $(echo $itm | sed 's/"//g')"
+  done
+  clear
+  echo "arch-chroot /mnt pacman -Sy --noconfirm --quiet ${pkgs}"
+  arch-chroot /mnt pacman -Sy --needed --quiet ${pkgs}
+
+  if [[ "${pkgs}" == *"sbctl"* ]]; then
+    # Secure Boot
+    echo "Setting up Secure Boot..."
+    if [[ "$(efivar -d --name 8be4df61-93ca-11d2-aa0d-00e098032b8c-SetupMode)" -eq 1 ]]; then
+      arch-chroot /mnt sbctl create-keys
+      arch-chroot /mnt sbctl enroll-keys -m
+      arch-chroot /mnt sbctl sign -s -o /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed /usr/lib/systemd/boot/efi/systemd-bootx64.efi
+      arch-chroot /mnt sbctl sign -s "${default_uki//\"/}"
+    else
+      echo "Not in Secure Boot setup mode. Skipping..."
+    fi
+    # Sign automatically after Generating UKI
+    printf "%s\n" "#!/usr/bin/env bash" "sbctl sign-all" >/mnt/etc/initcpio/post/uki-sbctl
+    chmod +x /mnt/etc/initcpio/post/uki-sbctl
+    if [[ "${pkgs}" == *"edk2-shell"* ]]; then
+      cp /mnt/usr/share/edk2-shell/x64/Shell.efi /mnt/efi/shellx64.efi
+      arch-chroot /mnt sbctl sign -s /efi/shellx64.efi
+    fi
+  fi
+
+  if [[ "${pkgs}" == *"iwd"* ]]; then
+    systemctl --root /mnt enable iwd systemd-resolved
+    if [ ! -d /mnt/etc/iwd ]; then
+      mkdir -p /mnt/etc/iwd
+    fi
+    printf "%s\n" "[General]" "EnableNetworkConfiguration=true" "" "[Network]" "NameResolvingService=systemd" >/mnt/etc/iwd/main.conf
+  fi
+  if [[ "${pkgs}" == *"dhcpcd"* ]]; then
+    systemctl --root /mnt enable dhcpcd
+  fi
+  if [[ "${pkgs}" == *"networkmanager"* ]]; then
+    systemctl --root /mnt enable NetworkManager
+  fi
+  if [[ "${pkgs}" == *"openssh"* ]]; then
+    systemctl --root /mnt enable sshd
+    if (dialog --backtitle "${apptitle}" --title "Do you want to activate PasswordAuthentication for SSH" --defaultno --yesno "Agree ?" 0 0); then
+      #PermitRootLogin prohibit-password
+      echo "sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /mnt/etc/ssh/sshd_config"
+      sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /mnt/etc/ssh/sshd_config
+      #PasswordAuthentication yes
+      echo "sed -i '/#PasswordAuthentication yes/s/^#//g' /mnt/etc/ssh/sshd_config"
+      sed -i '/#PasswordAuthentication yes/s/^#//g' /mnt/etc/ssh/sshd_config
+      pressanykey
+    fi
+  fi
+  if [[ "${pkgs}" == *"bluez"* ]]; then
+    systemctl --root /mnt enable bluetooth
+  fi
+  pressanykey
+}
+# -----------------------------------------------------
+
+pressanykey() {
+  read -n1 -p "Press any key to continue."
+}
+
+while (("$#")); do
+  case $1 in
+  -efi0) efimode=0 ;;
+  -efi1)
+    eficomputer=1
+    efimode=1
+    ;;
+  -efi2)
+    eficomputer=1
+    efimode=2
+    ;;
+  --chroot)
+    chroot=1
+    command=${2}
+    args=${3}
+    ;;
+  esac
+  shift
+done
+
+if [ "${chroot}" = "1" ]; then
+  case ${command} in
+  'setrootpassword') archsetrootpasswordchroot ;;
+  'setlocale') archsetlocalechroot ;;
+  'settimeutc') archsettimeutcchroot ;;
+  'settimelocal') archsettimelocalchroot ;;
+  'genmkinitcpio') archgenmkinitcpiochroot ;;
+  'grubinstall') archgrubinstallchroot ;;
+  'asusg14repo') asusg14repo ;;
+  'systemdbootloaderinstall') archsystemdinstallchroot ${args} ;;
+  'refindbootloaderinstall') archrefindinstallchroot ${args} ;;
+  esac
+else
+  pacman -Sy --needed arch-install-scripts neovim dialog
+  dmesg | grep efi: >/dev/null
+  if [ "$?" == "1" ]; then
+    if [ "${eficomputer}" != "1" ]; then
+      eficomputer=0
+    fi
+  else
+    eficomputer=1
+    if [ "${efimode}" == "" ]; then
+      efimode=1
+    fi
+  fi
+  cat <<EOF >dialog.colors
+use_shadow = OFF
+title_color = (BLACK,WHITE,OFF)
+button_label_active_color = (WHITE,BLUE,ON)
+button_label_inactive_color = (BLACK,WHITE,OFF)
+tag_color = (BLACK,WHITE,OFF)
+tag_selected_color = (WHITE,BLUE,ON)
+tag_key_color = (BLACK,WHITE,OFF)
+tag_key_selected_color = (WHITE,BLUE,ON)
+check_color = tag_color
+check_selected_color = tag_selected_color
+EOF
+  export DIALOGRC="dialog.colors"
+  EDITOR=nano
+  mainmenu
+  if [ -f dialog.colors ]; then
+    rm -f dialog.colors
+  fi
+  if [ -f kernelsel ]; then
+    rm kernelsel
+  fi
+
+  exit 0
+fi
