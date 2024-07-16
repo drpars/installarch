@@ -66,6 +66,7 @@ setkeymap() {
     clear
     echo "loadkeys ${keymap}"
     loadkeys ${keymap}
+    pressanykey
   fi
 }
 
