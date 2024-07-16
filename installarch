@@ -886,7 +886,7 @@ archgenmkinitcpio() {
     /mnt/etc/mkinitcpio.d/"$kernelsel".preset
   # Read the UKI setting and create the folder structure otherwise mkinitcpio will crash
   declare $(grep default_uki /mnt/etc/mkinitcpio.d/"$kernelsel".preset)
-  arch-chroot /mnt mkdir -p "$(dirname "${default_uki//\"/}")"
+  arch-chroot /mnt mkdir -p "$(dirname "${default_uki//\"}")"
   archchroot genmkinitcpio
   pressanykey
 }
@@ -1212,12 +1212,16 @@ archextrasmenu() {
       echo "arch-chroot /mnt sbctl create-keys"
       echo "arch-chroot /mnt sbctl enroll-keys -m"
       echo "arch-chroot /mnt sbctl sign -s -o /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed /usr/lib/systemd/boot/efi/systemd-bootx64.efi"
-      echo "arch-chroot /mnt sbctl sign -s \"${default_uki//\"/}\""
+      echo "arch-chroot /mnt sbctl sign -s \"${default_uki//\"}\""
       arch-chroot /mnt sbctl create-keys
       arch-chroot /mnt sbctl enroll-keys -m
       arch-chroot /mnt sbctl sign -s -o /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed /usr/lib/systemd/boot/efi/systemd-bootx64.efi
-      arch-chroot /mnt sbctl sign -s "${default_uki//\"/}"
-      bootctl update 
+      arch-chroot /mnt sbctl sign -s "${default_uki//\"}"
+      if [ -d /efi/EFI/systemd ]; then
+        if [ -f /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed ]; then
+          cp /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed /efi/EFI/systemd/systemd-bootx64.efi
+        fi
+      fi
     else
       echo "Not in Secure Boot setup mode. Skipping..."
     fi
