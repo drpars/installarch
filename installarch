@@ -825,6 +825,8 @@ archcreateuser() {
       clear
       echo "arch-chroot /mnt useradd -m $username"
       arch-chroot /mnt useradd -m "$username"
+      echo "echo $username:$userpasswrd | chpasswd -R /mnt"
+      echo $username:$userpasswrd | chpasswd -R /mnt
       pressanykey
       if (dialog --backtitle "${apptitle}" --title "Grant superuser privilege for :" --yesno "$username\n\n" 0 0); then
         clear
@@ -1217,16 +1219,16 @@ archextrasmenu() {
       arch-chroot /mnt sbctl enroll-keys -m
       arch-chroot /mnt sbctl sign -s -o /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed /usr/lib/systemd/boot/efi/systemd-bootx64.efi
       arch-chroot /mnt sbctl sign -s "${default_uki//\"}"
-      if [ -d /efi/EFI/systemd ]; then
-        if [ -f /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed ]; then
-          cp /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed /efi/EFI/systemd/systemd-bootx64.efi
+      if [ -d /mnt/efi/EFI/systemd ]; then
+        if [ -f /mnt/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed ]; then
+          cp -v /mnt/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed /mnt/efi/EFI/systemd/systemd-bootx64.efi
         fi
       fi
+      pressanykey
     else
       echo "Not in Secure Boot setup mode. Skipping..."
     fi
     # Sign automatically after Generating UKI
-
     echo "printf \"%s\n\" \"#!/usr/bin/env bash\" \"sbctl sign-all\" >/mnt/etc/initcpio/post/uki-sbctl"
     printf "%s\n" "#!/usr/bin/env bash" "sbctl sign-all" >/mnt/etc/initcpio/post/uki-sbctl
     echo "chmod +x /mnt/etc/initcpio/post/uki-sbctl"
