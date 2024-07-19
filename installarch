@@ -877,6 +877,8 @@ archgenfstabmenu() {
 archgenmkinitcpio() {
   clear
   kernelsel="$(cat kernelsel)"
+  # make readable /etc/mkinitcpio.conf
+  grep -v '^#' /mnt/etc/mkinitcpio.conf | tee /mnt/etc/mkinitcpio.conf >/dev/null
   sed -i -e 's/base udev/base systemd/g' /mnt/etc/mkinitcpio.conf
   # Change the preset file to generate a Unified Kernel Image
   sed -i \
