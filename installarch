@@ -13,7 +13,7 @@ mainmenu() {
     "Set Keyboard Layout" ""
     "Editor" ""
     "Edit Partitions (cfdisk)" ""
-    "Add External Repository" ""
+    "Optional Repositories" ""
     "Select Partition and Install" ""
     "" ""
     "Reboot" ""
@@ -32,9 +32,9 @@ mainmenu() {
       ;;
     "Edit Partitions (cfdisk)")
       diskpartcfdisk
-      nextitem="Add External Repository"
+      nextitem="Optional Repositories"
       ;;
-    "Add External Repository")
+    "Optional Repositories")
       addrepo
       nextitem="Select Partition and Install"
       ;;
@@ -91,7 +91,7 @@ chooseeditor() {
 
 addrepo() {
   options=("Asus G14 Repository" "")
-  sel=$(dialog --backtitle "${apptitle}" --title "Add External Repository" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  sel=$(dialog --backtitle "${apptitle}" --title "Optional Repositories" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
   if [ "$?" = "0" ]; then
     pkgs+=" ${sel}"
   else
@@ -572,7 +572,7 @@ archmenu() {
   options+=("Create swapfile" "")
   options+=("Generate fstab" "")
   options+=("Generate mkinitcpio.conf" "")
-  options+=("Add External Repository" "")
+  options+=("Optional Repositories" "")
   options+=("Edit fstab" "")
   options+=("Edit mkinitcpio.conf" "")
   options+=("Edit mirrorlist" "")
@@ -619,9 +619,9 @@ archmenu() {
       ;;
     "Generate mkinitcpio.conf")
       archgenmkinitcpio
-      nextitem="Add External Repository"
+      nextitem="Optional Repositories"
       ;;
-    "Add External Repository")
+    "Optional Repositories")
       addrepochroot
       nextitem="Edit fstab"
       ;;
@@ -889,7 +889,7 @@ archgenmkinitcpio() {
     /mnt/etc/mkinitcpio.d/"$kernelsel".preset
   # Read the UKI setting and create the folder structure otherwise mkinitcpio will crash
   declare $(grep default_uki /mnt/etc/mkinitcpio.d/"$kernelsel".preset)
-  arch-chroot /mnt mkdir -p "$(dirname "${default_uki//\"}")"
+  arch-chroot /mnt mkdir -p "$(dirname "${default_uki//\"/}")"
   archchroot genmkinitcpio
   pressanykey
 }
@@ -921,14 +921,20 @@ archcreateswapfile() {
 }
 
 addrepochroot() {
-  options=("Asus G14 Repository" "")
-  sel=$(dialog --backtitle "${apptitle}" --title "Add External Repository" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  options=("Multilib" "Official Repo")
+  options+=("Asus G14 Repository" "External Repo")
+  sel=$(dialog --backtitle "${apptitle}" --title "Optional Repositories" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
   if [ "$?" = "0" ]; then
     pkgs+=" ${sel}"
   else
     return 1
   fi
   case ${sel} in
+  "Multilib")
+    echo "sed -i \"/\[multilib\]/,/Include/\"'s/^#//' /mnt/etc/pacman.conf"
+    sed -i "/\[multilib\]/,/Include/"'s/^#//' /mnt/etc/pacman.conf
+    pressanykey
+    ;;
   "Asus G14 Repository")
     archchroot asusg14repo
     ;;
@@ -1214,11 +1220,11 @@ archextrasmenu() {
       echo "arch-chroot /mnt sbctl create-keys"
       echo "arch-chroot /mnt sbctl enroll-keys -m"
       echo "arch-chroot /mnt sbctl sign -s -o /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed /usr/lib/systemd/boot/efi/systemd-bootx64.efi"
-      echo "arch-chroot /mnt sbctl sign -s \"${default_uki//\"}\""
+      echo "arch-chroot /mnt sbctl sign -s \"${default_uki//\"/}\""
       arch-chroot /mnt sbctl create-keys
       arch-chroot /mnt sbctl enroll-keys -m
       arch-chroot /mnt sbctl sign -s -o /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed /usr/lib/systemd/boot/efi/systemd-bootx64.efi
-      arch-chroot /mnt sbctl sign -s "${default_uki//\"}"
+      arch-chroot /mnt sbctl sign -s "${default_uki//\"/}"
       if [ -d /mnt/efi/EFI/systemd ]; then
         if [ -f /mnt/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed ]; then
           cp -v /mnt/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed /mnt/efi/EFI/systemd/systemd-bootx64.efi
