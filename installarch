@@ -100,7 +100,6 @@ addrepo() {
   case ${sel} in
   "Asus G14 Repository")
     asusg14repo
-    pressanykey
     ;;
   esac
 }
@@ -932,7 +931,6 @@ addrepochroot() {
   case ${sel} in
   "Asus G14 Repository")
     archchroot asusg14repo
-    pressanykey
     ;;
   esac
 }
