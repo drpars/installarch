@@ -936,6 +936,7 @@ addrepochroot() {
   fi
   case ${sel} in
   "Multilib")
+    clear
     echo "sed -i \"/\[multilib\]/,/Include/\"'s/^#//' /mnt/etc/pacman.conf"
     sed -i "/\[multilib\]/,/Include/"'s/^#//' /mnt/etc/pacman.conf
     pressanykey
