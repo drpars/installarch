@@ -446,7 +446,7 @@ paralleldownloads() {
 }
 
 installbase() {
-  pkgs="base base-devel"
+  pkgs="base base-devel terminus-font"
   options=()
   options+=("linux" "")
   options+=("linux-lts" "")
@@ -921,9 +921,14 @@ archcreateswapfile() {
 }
 
 addrepochroot() {
+  if [ "${1}" = "" ]; then
+    nextitem="."
+  else
+    nextitem=${1}
+  fi
   options=("Multilib" "Official Repo")
   options+=("Asus G14 Repository" "External Repo")
-  sel=$(dialog --backtitle "${apptitle}" --title "Optional Repositories" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  sel=$(dialog --backtitle "${apptitle}" --title "Optional Repositories" --default-item "${nextitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
   if [ "$?" = "0" ]; then
     pkgs+=" ${sel}"
   else
@@ -934,11 +939,14 @@ addrepochroot() {
     echo "sed -i \"/\[multilib\]/,/Include/\"'s/^#//' /mnt/etc/pacman.conf"
     sed -i "/\[multilib\]/,/Include/"'s/^#//' /mnt/etc/pacman.conf
     pressanykey
+    nextitem="Asus G14 Repository"
     ;;
   "Asus G14 Repository")
     archchroot asusg14repo
+    nextitem="Asus G14 Repository"
     ;;
   esac
+  addrepochroot "${nextitem}"
 }
 
 asusg14repo() {
@@ -1268,7 +1276,7 @@ archextrasmenu() {
       "RouteMetric=100" \
       "" \
       "[IPv6AcceptRA]" \
-      "RouteMetric=100" | tee /mnt/etc/systemd/network/20-ethernet.network
+      "RouteMetric=100" | tee /mnt/etc/systemd/network/20-ethernet.network >/dev/null
     printf "%s\n" \
       "[Match]" \
       "Name=wl*" \
@@ -1284,7 +1292,7 @@ archextrasmenu() {
       "RouteMetric=600" \
       "" \
       "[IPv6AcceptRA]" \
-      "RouteMetric=600" | tee /mnt/etc/systemd/network/20-wlan.network
+      "RouteMetric=600" | tee /mnt/etc/systemd/network/20-wlan.network >/dev/null
     printf "%s\n" \
       "[Match]" \
       "Name=ww*" \
@@ -1299,7 +1307,7 @@ archextrasmenu() {
       "RouteMetric=700" \
       "" \
       "[IPv6AcceptRA]" \
-      "RouteMetric=700" | tee /mnt/etc/systemd/network/20-wwan.network
+      "RouteMetric=700" | tee /mnt/etc/systemd/network/20-wwan.network >/dev/null
     pressanykey
   fi
   if [[ "${pkgs}" == *"dhcpcd"* ]]; then
