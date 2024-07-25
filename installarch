@@ -1183,8 +1183,8 @@ archextrasmenu() {
   options+=("sbctl" "" on)
   options+=("edk2-shell" "" on)
   options+=("efibootmgr" "" on)
-  options+=("iwd" "" off)
-  options+=("dhcpcd" "" off)
+  options+=("iwd" "" on)
+  options+=("dhcpcd" "" on)
   options+=("wpa_supplicant" "" off)
   options+=("ifplugd" "" off)
   options+=("netctl" "" off)
@@ -1259,68 +1259,24 @@ archextrasmenu() {
 
   if [[ "${pkgs}" == *"iwd"* ]]; then
     clear
-    echo "systemctl --root /mnt enable iwd systemd-networkd systemd-resolved"
-    systemctl --root /mnt enable iwd systemd-networkd systemd-resolved
-    printf "%s\n" \
-      "[Match]" \
-      "Name=en*" \
-      "Name=eth*" \
-      "" \
-      "[Link]" \
-      "RequiredForOnline=routable" \
-      "" \
-      "[Network]" \
-      "DHCP=yes" \
-      "MulticastDNS=yes" \
-      "" \
-      "[DHCPv4]" \
-      "RouteMetric=100" \
-      "" \
-      "[IPv6AcceptRA]" \
-      "RouteMetric=100" | tee /mnt/etc/systemd/network/20-ethernet.network >/dev/null
-    printf "%s\n" \
-      "[Match]" \
-      "Name=wl*" \
-      "" \
-      "[Link]" \
-      "RequiredForOnline=routable" \
-      "" \
-      "[Network]" \
-      "DHCP=yes" \
-      "MulticastDNS=yes" \
-      "" \
-      "[DHCPv4]" \
-      "RouteMetric=600" \
-      "" \
-      "[IPv6AcceptRA]" \
-      "RouteMetric=600" | tee /mnt/etc/systemd/network/20-wlan.network >/dev/null
-    printf "%s\n" \
-      "[Match]" \
-      "Name=ww*" \
-      "" \
-      "[Link]" \
-      "RequiredForOnline=routable" \
-      "" \
-      "[Network]" \
-      "DHCP=yes" \
-      "" \
-      "[DHCPv4]" \
-      "RouteMetric=700" \
-      "" \
-      "[IPv6AcceptRA]" \
-      "RouteMetric=700" | tee /mnt/etc/systemd/network/20-wwan.network >/dev/null
+    echo "systemctl --root /mnt enable iwd systemd-resolved"
+    systemctl --root /mnt enable iwd systemd-resolved
     pressanykey
   fi
   if [[ "${pkgs}" == *"dhcpcd"* ]]; then
     clear
     echo "systemctl --root /mnt enable dhcpcd"
+    echo "systemctl --root /mnt mask systemd-networkd"
     systemctl --root /mnt enable dhcpcd
+    systemctl --root /mnt mask systemd-networkd
     pressanykey
   fi
   if [[ "${pkgs}" == *"networkmanager"* ]]; then
     clear
     echo "systemctl --root /mnt enable NetworkManager"
+    echo "systemctl --root /mnt mask systemd-networkd"
     systemctl --root /mnt enable NetworkManager
+    systemctl --root /mnt mask systemd-networkd
     pressanykey
   fi
   if [[ "${pkgs}" == *"openssh"* ]]; then
