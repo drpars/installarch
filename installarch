@@ -446,7 +446,7 @@ paralleldownloads() {
 }
 
 installbase() {
-  pkgs="base base-devel terminus-font"
+  pkgs="base base-devel"
   options=()
   options+=("linux" "")
   options+=("linux-lts" "")
