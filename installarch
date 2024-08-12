@@ -928,7 +928,7 @@ addrepochroot() {
   fi
   options=("Multilib" "Official Repo")
   options+=("Asus G14 Repository" "External Repo")
-  sel=$(dialog --backtitle "${apptitle}" --title "Optional Repositories" --default-item "${nextitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  sel=$(dialog --backtitle "${apptitle}" --title "Optional Repositories" --default-item "${nextitem}" --cancel-button "Back" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
   if [ "$?" = "0" ]; then
     pkgs+=" ${sel}"
   else
