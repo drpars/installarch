@@ -571,12 +571,13 @@ archmenu() {
   options+=("Add User" "Home user")
   options+=("Create swapfile" "")
   options+=("Generate fstab" "")
+  options+=("Disable watchdog" "systemd-boot")
   options+=("Generate mkinitcpio.conf" "")
   options+=("Optional Repositories" "")
-  options+=("Disable watchdog" "systemd-boot")
   options+=("Edit fstab" "")
   options+=("Edit mkinitcpio.conf" "")
   options+=("Edit mirrorlist" "")
+  options+=("Edit vconsole.conf" "")
   options+=("Bootloader" "")
   options+=("Extras" "")
   sel=$(dialog --backtitle "${apptitle}" --title "Arch Install Menu" --cancel-button "Back" --default-item "${nextitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
@@ -641,6 +642,10 @@ archmenu() {
     "Edit mirrorlist")
       ${EDITOR} /mnt/etc/pacman.d/mirrorlist
       nextitem="Edit mirrorlist"
+      ;;
+    "Edit vconsole.conf")
+      ${EDITOR} /mnt/etc/vconsole.conf
+      nextitem="Edit vconsole.conf"
       ;;
     "Bootloader")
       archbootloadermenu
@@ -882,27 +887,32 @@ disablewatchdog() {
   presentcmdline=$(cat /mnt/etc/kernel/cmdline)
   if (cpumodel "intel"); then
     intelwatchdog="modprobe.blacklist=iTCO_wdt"
-    if [ -f /mnt/etc/kernel/cmdline ];then
-      if ($presentcmdline | grep "$intelwatchdog");then
+    if [ -f /mnt/etc/kernel/cmdline ]; then
+      if (echo $presentcmdline | grep "$intelwatchdog" >/dev/null); then
+        clear
         echo "$intelwatchdog is already exist."
         pressanykey
       else
+        clear
         echo "echo \"$presentcmdline $intelwatchdog\" >/mnt/etc/kernel/cmdline"
         echo "$presentcmdline $intelwatchdog" >/mnt/etc/kernel/cmdline
         pressanykey
       fi
     fi
   elif (cpumodel "amd"); then
-    if ($presentcmdline | grep "nowatchdog");then
+    if (echo $presentcmdline | grep "nowatchdog" >/dev/null); then
+      clear
       echo "nowatchdog is already exist"
       pressanykey
     else
+      clear
       echo "echo \"$presentcmdline "nowatchdog"\" >/mnt/etc/kernel/cmdline"
       echo "$presentcmdline "nowatchdog"" >/mnt/etc/kernel/cmdline
       pressanykey
     fi
     echo "printf \"%s\\\n\" \"# watchdog\" \"blacklist sp5100_tco\" >/mnt/etc/modprobe.d/blacklist-watchdog.conf"
     printf "%s\n" "# watchdog" "blacklist sp5100_tco" >/mnt/etc/modprobe.d/blacklist-watchdog.conf
+    pressanykey
   fi
 }
 
@@ -1217,7 +1227,7 @@ archextrasmenu() {
   options+=("edk2-shell" "" on)
   options+=("efibootmgr" "" on)
   options+=("iwd" "" on)
-  options+=("dhcpcd" "" on)
+  options+=("dhcpcd" "" off)
   options+=("wpa_supplicant" "" off)
   options+=("ifplugd" "" off)
   options+=("netctl" "" off)
@@ -1294,6 +1304,7 @@ archextrasmenu() {
     clear
     echo "systemctl --root /mnt enable iwd systemd-resolved"
     systemctl --root /mnt enable iwd systemd-resolved
+    printf "%s\n" "[General]" "EnableNetworkConfiguration=true" "" "[Network]" "RoutePriorityOffset=300" "NameResolvingService=systemd" >/mnt/etc/iwd/main.conf
     pressanykey
   fi
   if [[ "${pkgs}" == *"dhcpcd"* ]]; then
