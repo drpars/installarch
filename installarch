@@ -883,20 +883,21 @@ disablewatchdog() {
   if (cpumodel "intel"); then
     intelwatchdog="modprobe.blacklist=iTCO_wdt"
     if [ -f /mnt/etc/kernel/cmdline ];then
-      if ( $presentcmdline | grep "$intelwatchdog");then
+      if ($presentcmdline | grep "$intelwatchdog");then
         echo "$intelwatchdog is already exist."
         pressanykey
       else
         echo "echo \"$presentcmdline $intelwatchdog\" >/mnt/etc/kernel/cmdline"
         echo "$presentcmdline $intelwatchdog" >/mnt/etc/kernel/cmdline
         pressanykey
+      fi
     fi
   elif (cpumodel "amd"); then
     if ($presentcmdline | grep "nowatchdog");then
       echo "nowatchdog is already exist"
       pressanykey
     else
-      echo "echo \"$presentcmdline \"nowatchdog\"\" >/mnt/etc/kernel/cmdline"
+      echo "echo \"$presentcmdline "nowatchdog"\" >/mnt/etc/kernel/cmdline"
       echo "$presentcmdline "nowatchdog"" >/mnt/etc/kernel/cmdline
       pressanykey
     fi
