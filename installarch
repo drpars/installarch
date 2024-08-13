@@ -446,7 +446,7 @@ paralleldownloads() {
 }
 
 installbase() {
-  pkgs="base base-devel"
+  pkgs="base base-devel terminus-font"
   options=()
   options+=("linux" "")
   options+=("linux-lts" "")
@@ -573,6 +573,7 @@ archmenu() {
   options+=("Generate fstab" "")
   options+=("Generate mkinitcpio.conf" "")
   options+=("Optional Repositories" "")
+  options+=("Disable watchdog" "systemd-boot")
   options+=("Edit fstab" "")
   options+=("Edit mkinitcpio.conf" "")
   options+=("Edit mirrorlist" "")
@@ -623,6 +624,10 @@ archmenu() {
       ;;
     "Optional Repositories")
       addrepochroot
+      nextitem="Disable watchdog"
+      ;;
+    "Disable watchdog")
+      disablewatchdog
       nextitem="Edit fstab"
       ;;
     "Edit fstab")
@@ -960,6 +965,33 @@ asusg14repo() {
   printf "%s\n" "[g14]" "Server = https://naru.jhyub.dev/\$repo" "Server = https://arch.asus-linux.org" >>/etc/pacman.conf
   pacman -Sy
   pressanykey
+}
+
+disablewatchdog() {
+  presentcmdline=$(cat /mnt/etc/kernel/cmdline)
+  if (cpumodel "intel"); then
+    intelwatchdog="modprobe.blacklist=iTCO_wdt"
+    if [ -f /mnt/etc/kernel/cmdline ];then
+      if ( $presentcmdline | grep "$intelwatchdog");then
+        echo "$intelwatchdog is already exist."
+        pressanykey
+      else
+        echo "echo \"$presentcmdline $intelwatchdog\" >/mnt/etc/kernel/cmdline"
+        echo "$presentcmdline $intelwatchdog" >/mnt/etc/kernel/cmdline
+        pressanykey
+    fi
+  elif (cpumodel "amd"); then
+    if ($presentcmdline | grep "nowatchdog");then
+      echo "nowatchdog is already exist"
+      pressanykey
+    else
+      echo "\"$presentcmdline \"nowatchdog\"\" >/mnt/etc/kernel/cmdline"
+      echo "$presentcmdline "nowatchdog"" >/mnt/etc/kernel/cmdline
+      pressanykey
+    fi
+    echo "printf \"%s\\\n\" \"# watchdog\" \"blacklist sp5100_tco\" >/mnt/etc/modprobe.d/blacklist-watchdog.conf"
+    printf "%s\n" "# watchdog" "blacklist sp5100_tco" >/mnt/etc/modprobe.d/blacklist-watchdog.conf
+  fi
 }
 
 archeditmkinitcpio() {
@@ -1327,6 +1359,10 @@ while (("$#")); do
   esac
   shift
 done
+
+cpumodel() {
+  cat /proc/cpuinfo | awk '/model name/' | uniq | grep -i "$1" >/dev/null
+}
 
 if [ "${chroot}" = "1" ]; then
   case ${command} in
