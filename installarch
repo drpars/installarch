@@ -13,6 +13,7 @@ mainmenu() {
     "Set Keyboard Layout" ""
     "Editor" ""
     "Edit Partitions (cfdisk)" ""
+    "Reflector" ""
     "Optional Repositories" ""
     "Select Partition and Install" ""
     "" ""
@@ -32,6 +33,10 @@ mainmenu() {
       ;;
     "Edit Partitions (cfdisk)")
       diskpartcfdisk
+      nextitem="Reflector"
+      ;;
+    "Reflector")
+      archreflector
       nextitem="Optional Repositories"
       ;;
     "Optional Repositories")
@@ -108,6 +113,16 @@ rebootpc() {
   if (dialog --backtitle "${apptitle}" --title "Reboot" --defaultno --yesno "Reboot ?" 0 0); then
     clear
     reboot
+  fi
+}
+
+confirm() {
+  dialog --backtitle "$apptitle" --yesno "$1" 0 0
+}
+
+archreflector() {
+  if (confirm "Do yo want to run reflector ? \n reflector --verbose --latest 50 --protocol https --sort rate --save /etc/pacman.d/mirrorlist"); then
+    reflector --verbose --latest 50 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
   fi
 }
 
