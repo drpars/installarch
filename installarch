@@ -1319,7 +1319,11 @@ archextrasmenu() {
     clear
     echo "systemctl --root /mnt enable iwd systemd-resolved systemd-networkd"
     systemctl --root /mnt enable iwd systemd-resolved systemd-networkd
-    printf "%s\n" "[General]" "EnableNetworkConfiguration=true" "" "[Network]" "RoutePriorityOffset=300" "NameResolvingService=systemd" >/mnt/etc/iwd/main.conf
+    if [ ! -d /mnt/etc/iwd ]; then
+      mkdir -p /mnt/etc/iwd
+    fi
+    printf "%s\n" "[General]" "EnableNetworkConfiguration=true" "" "[Network]" "RoutePriorityOffset=300" "NameResolvingService=systemd" | tee /mnt/etc/iwd/main.conf >/dev/null
+    archresolvconf
     printf "%s\n" \
       "[Match]" \
       "Name=en*" \
@@ -1372,14 +1376,16 @@ archextrasmenu() {
   fi
   if [[ "${pkgs}" == *"dhcpcd"* ]]; then
     clear
-    echo "systemctl --root /mnt enable dhcpcd"
-    systemctl --root /mnt enable dhcpcd
+    echo "systemctl --root /mnt enable dhcpcd systemd-resolved"
+    systemctl --root /mnt enable dhcpcd systemd-resolved
+    archresolvconf
     pressanykey
   fi
   if [[ "${pkgs}" == *"networkmanager"* ]]; then
     clear
     echo "systemctl --root /mnt enable NetworkManager systemd-resolved"
     systemctl --root /mnt enable NetworkManager systemd-resolved
+    archresolvconf
     pressanykey
   fi
   if [[ "${pkgs}" == *"openssh"* ]]; then
@@ -1403,6 +1409,16 @@ archextrasmenu() {
     echo "systemctl --root /mnt enable bluetooth"
     systemctl --root /mnt enable bluetooth
     pressanykey
+  fi
+}
+
+archresolvconf() {
+  # resolve.conf
+  if [ ! /mnt/etc/resolv.conf ]; then
+    ln -sf ../run/systemd/resolve/stub-resolv.conf /mnt/etc/resolv.conf
+  else
+    rm /mnt/etc/resolv.conf
+    ln -sf ../run/systemd/resolve/stub-resolv.conf /mnt/etc/resolv.conf
   fi
 }
 # -----------------------------------------------------
