@@ -1015,7 +1015,7 @@ asusg14repo() {
   pacman-key --finger 8F654886F17D497FEFE3DB448B15A6B0E9A3FA35
   pacman-key --lsign-key 8F654886F17D497FEFE3DB448B15A6B0E9A3FA35
   pacman-key --finger 8F654886F17D497FEFE3DB448B15A6B0E9A3FA35
-  printf "%s\n" "[g14]" "Server = https://naru.jhyub.dev/\$repo" "Server = https://arch.asus-linux.org" >>/etc/pacman.conf
+  printf "%s\n" "[g14]" "Server = https://arch.asus-linux.org" "Server = https://naru.jhyub.dev/\$repo" >>/etc/pacman.conf
   pacman -Sy
   pressanykey
 }
@@ -1031,19 +1031,20 @@ archeditmkinitcpio() {
 
 archbootloadermenu() {
   options=()
-  options+=("grub" "")
-  if [ "${efimode}" == "1" ]; then
-    options+=("systemd-boot" "")
-    options+=("refind" "")
-  fi
+  options+=("systemd-boot" "")
+  # options+=("grub" "")
+  # if [ "${efimode}" == "1" ]; then
+  #   options+=("systemd-boot" "")
+  #   options+=("refind" "")
+  # fi
   sel=$(dialog --backtitle "${apptitle}" --title "Choose bootloader" --cancel-button "Back" --menu "" 0 0 0 \
     "${options[@]}" \
     3>&1 1>&2 2>&3)
   if [ "$?" = "0" ]; then
     case ${sel} in
-    "grub") archbootloadergrubmenu ;;
+    # "grub") archbootloadergrubmenu ;;
     "systemd-boot") archbootloadersystemdbmenu ;;
-    "refind") archbootloaderrefindmenu ;;
+    # "refind") archbootloaderrefindmenu ;;
     esac
   fi
 }
@@ -1236,16 +1237,22 @@ archrefindinstallchroot() {
 archextrasmenu() {
   pkgs=""
   options=()
-  options+=("intel-ucode" "" off)
-  options+=("amd-ucode" "" off)
+  if (cpumodel "intel"); then
+    options+=("intel-ucode" "" on)
+  else
+    options+=("intel-ucode" "" off)
+  fi
+  if (cpumodel "amd"); then
+    options+=("amd-ucode" "" on)
+  else
+    options+=("amd-ucode" "" off)
+  fi
   options+=("sbctl" "" on)
   options+=("edk2-shell" "" on)
   options+=("efibootmgr" "" on)
   options+=("iwd" "" on)
   options+=("dhcpcd" "" off)
-  options+=("wpa_supplicant" "" off)
-  options+=("ifplugd" "" off)
-  options+=("netctl" "" off)
+  options+=("networkmanager" "" off)
   options+=("openssh" "" on)
   options+=("git" "" on)
   options+=("neovim" "" on)
@@ -1263,7 +1270,6 @@ archextrasmenu() {
   options+=("eza" "" on)
   options+=("bluez" "" on)
   options+=("bluez-utils" "" on)
-  options+=("networkmanager" "" off)
   sel=$(dialog --backtitle "${apptitle}" --title "Extras" --checklist "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
   if [ ! "$?" = "0" ]; then
     return 1
@@ -1297,20 +1303,22 @@ archextrasmenu() {
           cp -v /mnt/usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed /mnt/efi/EFI/systemd/systemd-bootx64.efi
         fi
       fi
+      # Sign automatically after Generating UKI
+      echo "printf \"%s\n\" \"#!/usr/bin/env bash\" \"sbctl sign-all\" >/mnt/etc/initcpio/post/uki-sbctl"
+      printf "%s\n" "#!/usr/bin/env bash" "sbctl sign-all" >/mnt/etc/initcpio/post/uki-sbctl
+      echo "chmod +x /mnt/etc/initcpio/post/uki-sbctl"
+      chmod +x /mnt/etc/initcpio/post/uki-sbctl
       pressanykey
     else
       echo "Not in Secure Boot setup mode. Skipping..."
     fi
-    # Sign automatically after Generating UKI
-    echo "printf \"%s\n\" \"#!/usr/bin/env bash\" \"sbctl sign-all\" >/mnt/etc/initcpio/post/uki-sbctl"
-    printf "%s\n" "#!/usr/bin/env bash" "sbctl sign-all" >/mnt/etc/initcpio/post/uki-sbctl
-    echo "chmod +x /mnt/etc/initcpio/post/uki-sbctl"
-    chmod +x /mnt/etc/initcpio/post/uki-sbctl
     if [[ "${pkgs}" == *"edk2-shell"* ]]; then
       echo "cp /mnt/usr/share/edk2-shell/x64/Shell.efi /mnt/efi/shellx64.efi"
       echo "arch-chroot /mnt sbctl sign -s /efi/shellx64.efi"
       cp /mnt/usr/share/edk2-shell/x64/Shell.efi /mnt/efi/shellx64.efi
-      arch-chroot /mnt sbctl sign -s /efi/shellx64.efi
+      if [[ "$(efivar -d --name 8be4df61-93ca-11d2-aa0d-00e098032b8c-SetupMode)" -eq 1 ]]; then
+        arch-chroot /mnt sbctl sign -s /efi/shellx64.efi
+      fi
     fi
     pressanykey
   fi
