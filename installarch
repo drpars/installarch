@@ -122,6 +122,7 @@ confirm() {
 
 archreflector() {
   if (confirm "Do yo want to run reflector ? \n reflector --verbose --latest 50 --protocol https --sort rate --save /etc/pacman.d/mirrorlist"); then
+    clear
     reflector --verbose --latest 50 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
   fi
 }
@@ -587,7 +588,7 @@ archmenu() {
   options+=("Create swapfile" "")
   options+=("Generate fstab" "")
   options+=("Disable watchdog" "systemd-boot")
-  options+=("Generate mkinitcpio.conf" "")
+  options+=("Generate mkinitcpio" "")
   options+=("Optional Repositories" "")
   options+=("Edit fstab" "")
   options+=("Edit mkinitcpio.conf" "")
@@ -628,42 +629,42 @@ archmenu() {
       ;;
     "Create swapfile")
       archcreateswapfile
-      nextitem="Generate fstab"
-      ;;
-    "Generate fstab")
-      archgenfstabmenu
-      nextitem="Generate mkinitcpio.conf"
-      ;;
-    "Disable watchdog")
-      disablewatchdog
-      nextitem="Generate mkinitcpio.conf"
-      ;;
-    "Generate mkinitcpio.conf")
-      archgenmkinitcpio
       nextitem="Optional Repositories"
       ;;
     "Optional Repositories")
       addrepochroot
+      nextitem="Generate fstab"
+      ;;
+    "Generate fstab")
+      archgenfstabmenu
+      nextitem="Bootloader"
+      ;;
+    "Bootloader")
+      archbootloadermenu
+      nextitem="Generate mkinitcpio"
+      ;;
+    "Generate mkinitcpio")
+      archgenmkinitcpio
+      nextitem="Disable watchdog"
+      ;;
+    "Disable watchdog")
+      disablewatchdog
       nextitem="Edit fstab"
       ;;
     "Edit fstab")
       ${EDITOR} /mnt/etc/fstab
-      nextitem="Edit fstab"
+      nextitem="Edit mkinitcpio.conf"
       ;;
     "Edit mkinitcpio.conf")
       archeditmkinitcpio
-      nextitem="Edit mkinitcpio.conf"
+      nextitem="Edit mirrorlist"
       ;;
     "Edit mirrorlist")
       ${EDITOR} /mnt/etc/pacman.d/mirrorlist
-      nextitem="Edit mirrorlist"
+      nextitem="Edit vconsole.conf"
       ;;
     "Edit vconsole.conf")
       ${EDITOR} /mnt/etc/vconsole.conf
-      nextitem="Edit vconsole.conf"
-      ;;
-    "Bootloader")
-      archbootloadermenu
       nextitem="Extras"
       ;;
     "Extras")
@@ -864,99 +865,6 @@ archcreateuser() {
   fi
 }
 
-archgenfstabmenu() {
-  options=()
-  options+=("UUID" "genfstab -U")
-  options+=("LABEL" "genfstab -L")
-  options+=("PARTUUID" "genfstab -t PARTUUID")
-  options+=("PARTLABEL" "genfstab -t PARTLABEL")
-  sel=$(dialog --backtitle "${apptitle}" --title "Generate fstab" --cancel-button "Back" --default-item "${nextitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
-  if [ "$?" = "0" ]; then
-    case ${sel} in
-    "UUID")
-      clear
-      echo "genfstab -U -p /mnt > /mnt/etc/fstab"
-      genfstab -U -p /mnt >/mnt/etc/fstab
-      ;;
-    "LABEL")
-      clear
-      echo "genfstab -L -p /mnt > /mnt/etc/fstab"
-      genfstab -L -p /mnt >/mnt/etc/fstab
-      ;;
-    "PARTUUID")
-      clear
-      echo "genfstab -t PARTUUID -p /mnt > /mnt/etc/fstab"
-      genfstab -t PARTUUID -p /mnt >/mnt/etc/fstab
-      ;;
-    "PARTLABEL")
-      clear
-      echo "genfstab -t PARTLABEL -p /mnt > /mnt/etc/fstab"
-      genfstab -t PARTLABEL -p /mnt >/mnt/etc/fstab
-      ;;
-    esac
-  fi
-  pressanykey
-}
-
-disablewatchdog() {
-  presentcmdline=$(cat /mnt/etc/kernel/cmdline)
-  if (cpumodel "intel"); then
-    intelwatchdog="modprobe.blacklist=iTCO_wdt"
-    if [ -f /mnt/etc/kernel/cmdline ]; then
-      if (echo $presentcmdline | grep "$intelwatchdog" >/dev/null); then
-        clear
-        echo "$intelwatchdog is already exist."
-        pressanykey
-      else
-        clear
-        echo "echo \"$presentcmdline $intelwatchdog\" >/mnt/etc/kernel/cmdline"
-        echo "$presentcmdline $intelwatchdog" >/mnt/etc/kernel/cmdline
-        pressanykey
-      fi
-    fi
-  elif (cpumodel "amd"); then
-    if (echo $presentcmdline | grep "nowatchdog" >/dev/null); then
-      clear
-      echo "nowatchdog is already exist"
-      pressanykey
-    else
-      clear
-      echo "echo \"$presentcmdline "nowatchdog"\" >/mnt/etc/kernel/cmdline"
-      echo "$presentcmdline "nowatchdog"" >/mnt/etc/kernel/cmdline
-      pressanykey
-    fi
-    echo "printf \"%s\\\n\" \"# watchdog\" \"blacklist sp5100_tco\" >/mnt/etc/modprobe.d/blacklist-watchdog.conf"
-    printf "%s\n" "# watchdog" "blacklist sp5100_tco" >/mnt/etc/modprobe.d/blacklist-watchdog.conf
-    pressanykey
-  fi
-}
-
-archgenmkinitcpio() {
-  clear
-  kernelsel="$(cat kernelsel)"
-  # make readable /etc/mkinitcpio.conf
-  grep -v '^#' /mnt/etc/mkinitcpio.conf | tee /mnt/etc/mkinitcpio.conf >/dev/null
-  sed -i -e 's/base udev/base systemd/g' /mnt/etc/mkinitcpio.conf
-  # Change the preset file to generate a Unified Kernel Image
-  sed -i \
-    -e '/^#ALL_config/s/^#//' \
-    -e '/^#default_uki/s/^#//' \
-    -e '/^#default_options/s/^#//' \
-    -e 's/default_image=/#default_image=/g' \
-    -e "s/PRESETS=('default' 'fallback')/PRESETS=('default')/g" \
-    /mnt/etc/mkinitcpio.d/"$kernelsel".preset
-  # Read the UKI setting and create the folder structure otherwise mkinitcpio will crash
-  declare $(grep default_uki /mnt/etc/mkinitcpio.d/"$kernelsel".preset)
-  arch-chroot /mnt mkdir -p "$(dirname "${default_uki//\"/}")"
-  archchroot genmkinitcpio
-  pressanykey
-}
-archgenmkinitcpiochroot() {
-  echo "mkinitcpio -P"
-  mkinitcpio -P
-  exit
-}
-
 archcreateswapfile() {
   swapfile=$(dialog --backtitle "${apptitle}" --title "Enter swapfile size (MB) :" --inputbox "" 0 0 "8192" 3>&1 1>&2 2>&3)
   if [[ "$swapfile" =~ ^[1-9][0-9]*$ ]]; then
@@ -1007,7 +915,6 @@ addrepochroot() {
   esac
   addrepochroot "${nextitem}"
 }
-
 asusg14repo() {
   clear
   # Adding asus-linux repository
@@ -1020,100 +927,52 @@ asusg14repo() {
   pressanykey
 }
 
-archeditmkinitcpio() {
-  ${EDITOR} /mnt/etc/mkinitcpio.conf
-  if (dialog --backtitle "${apptitle}" --title "Edit mkinitcpio.conf" --yesno "Generate mkinitcpio ?" 0 0); then
-    clear
-    archchroot genmkinitcpio
-    pressanykey
+archgenfstabmenu() {
+  options=()
+  options+=("UUID" "genfstab -U")
+  options+=("LABEL" "genfstab -L")
+  options+=("PARTUUID" "genfstab -t PARTUUID")
+  options+=("PARTLABEL" "genfstab -t PARTLABEL")
+  sel=$(dialog --backtitle "${apptitle}" --title "Generate fstab" --cancel-button "Back" --default-item "${nextitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
+  if [ "$?" = "0" ]; then
+    case ${sel} in
+    "UUID")
+      clear
+      echo "genfstab -U -p /mnt > /mnt/etc/fstab"
+      genfstab -U -p /mnt >/mnt/etc/fstab
+      ;;
+    "LABEL")
+      clear
+      echo "genfstab -L -p /mnt > /mnt/etc/fstab"
+      genfstab -L -p /mnt >/mnt/etc/fstab
+      ;;
+    "PARTUUID")
+      clear
+      echo "genfstab -t PARTUUID -p /mnt > /mnt/etc/fstab"
+      genfstab -t PARTUUID -p /mnt >/mnt/etc/fstab
+      ;;
+    "PARTLABEL")
+      clear
+      echo "genfstab -t PARTLABEL -p /mnt > /mnt/etc/fstab"
+      genfstab -t PARTLABEL -p /mnt >/mnt/etc/fstab
+      ;;
+    esac
   fi
+  pressanykey
 }
 
 archbootloadermenu() {
   options=()
   options+=("systemd-boot" "")
-  # options+=("grub" "")
-  # if [ "${efimode}" == "1" ]; then
-  #   options+=("systemd-boot" "")
-  #   options+=("refind" "")
-  # fi
   sel=$(dialog --backtitle "${apptitle}" --title "Choose bootloader" --cancel-button "Back" --menu "" 0 0 0 \
     "${options[@]}" \
     3>&1 1>&2 2>&3)
   if [ "$?" = "0" ]; then
     case ${sel} in
-    # "grub") archbootloadergrubmenu ;;
     "systemd-boot") archbootloadersystemdbmenu ;;
-    # "refind") archbootloaderrefindmenu ;;
     esac
   fi
 }
-
-archbootloadergrubmenu() {
-  if [ "${1}" = "" ]; then
-    nextblitem="."
-  else
-    nextblitem=${1}
-  fi
-  options=()
-  options+=("Install grub" "pacstrap grub (efibootmgr), grub-mkconfig")
-  options+=("Edit grub" "")
-  sel=$(dialog --backtitle "${apptitle}" --title "Grub Install Menu" --cancel-button "Back" --default-item "${nextblitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
-  if [ "$?" = "0" ]; then
-    case ${sel} in
-    "Install grub")
-      archgrubinstall
-      nextblitem="Edit grub"
-      ;;
-    "Edit grub")
-      ${EDITOR} /mnt/etc/default/grub
-      if (dialog --backtitle "${apptitle}" --title "Install grub" --yesno "Run grub-mkconfig ?" 0 0); then
-        clear
-        archchroot grubinstall
-        pressanykey
-      fi
-      nextblitem=""
-      ;;
-    esac
-    archbootloadergrubmenu "${nextblitem}"
-  fi
-}
-
-archgrubinstall() {
-  clear
-  echo "pacstrap /mnt grub"
-  pacstrap /mnt grub
-  pressanykey
-
-  if [ "${eficomputer}" == "1" ]; then
-    if [ "${efimode}" == "1" ] || [ "${efimode}" == "2" ]; then
-      if (dialog --backtitle "${apptitle}" --title "Install efibootmgr" --yesno "efibootmgr is required for EFI computers." 0 0); then
-        clear
-        echo "pacstrap /mnt efibootmgr"
-        pacstrap /mnt efibootmgr
-        pressanykey
-      fi
-    else
-      if (dialog --backtitle "${apptitle}" --title "Install efibootmgr" --defaultno --yesno "efibootmgr is required for EFI computers." 0 0); then
-        clear
-        echo "pacstrap /mnt efibootmgr"
-        pacstrap /mnt efibootmgr
-        pressanykey
-      fi
-    fi
-  fi
-  clear
-  archchroot grubinstall
-  pressanykey
-}
-archgrubinstallchroot() {
-  echo "mkdir /efi/grub"
-  echo "grub-mkconfig -o /efi/grub/grub.cfg"
-  mkdir /efi/grub
-  grub-mkconfig -o /efi/grub/grub.cfg
-  exit
-}
-
 archbootloadersystemdbmenu() {
   if [ "${1}" = "" ]; then
     nextblitem="."
@@ -1148,10 +1007,15 @@ archbootloadersystemdbmenu() {
     archbootloadersystemdbmenu "${nextblitem}"
   fi
 }
-
 archsystemdinstall() {
   clear
-  archchroot systemdbootloaderinstall ${realrootdev}
+  echo "bootctl --efi-boot-option-description="Arch Linux" install"
+  arch-chroot /mnt bootctl --esp-path=/efi --efi-boot-option-description="Arch Linux" install
+  isvbox=$(lspci | grep "VirtualBox G")
+  if [ "${isvbox}" ]; then
+    echo "VirtualBox detected, creating startup.nsh..."
+    echo "\EFI\systemd\systemd-bootx64.efi" >/boot/startup.nsh
+  fi
   pacstrap /mnt efibootmgr
 
   partuuid=$(blkid -s PARTUUID -o value ${realrootdev})
@@ -1171,66 +1035,72 @@ archsystemdinstall() {
   echo "root=PARTUUID=$partuuid quiet rw rootfstype=$parttype systemd.unit=graphical.target" >/mnt/etc/kernel/cmdline
   pressanykey
 }
-archsystemdinstallchroot() {
-  echo "bootctl --efi-boot-option-description="Arch Linux" install"
-  bootctl --esp-path=/efi --efi-boot-option-description="Arch Linux" install
-  isvbox=$(lspci | grep "VirtualBox G")
-  if [ "${isvbox}" ]; then
-    echo "VirtualBox detected, creating startup.nsh..."
-    echo "\EFI\systemd\systemd-bootx64.efi" >/boot/startup.nsh
-  fi
-}
 
-archbootloaderrefindmenu() {
-  if [ "${1}" = "" ]; then
-    nextblitem="."
-  else
-    nextblitem=${1}
-  fi
-  options=()
-  options+=("Install refind" "pacstrap refind-efi")
-  options+=("Edit refind_linux.conf" "")
-  sel=$(dialog --backtitle "${apptitle}" --title "rEFInd Install Menu" --cancel-button "Back" --default-item "${nextblitem}" --menu "" 0 0 0 "${options[@]}" 3>&1 1>&2 2>&3)
-  if [ "$?" = "0" ]; then
-    case ${sel} in
-    "Install refind")
-      archrefindinstall
-      nextblitem="Edit refind_linux.conf"
-      ;;
-    "Edit refind_linux.conf")
-      ${EDITOR} /mnt/boot/refind_linux.conf
-      nextblitem="Edit refind_linux.conf"
-      ;;
-    esac
-    archbootloaderrefindmenu "${nextblitem}"
-  fi
-
-}
-archrefindinstall() {
+archgenmkinitcpio() {
   clear
-
-  echo "pacstrap /mnt refind"
-  echo "archchroot refindbootloaderinstall ${realrootdev}"
-  echo "echo \"\\\"Arch Linux         \\\" \\\"root=UUID=${rootuuid} rw add_efi_memmap\\\"\" > /mnt/efi/refind_linux.conf"
-  echo "echo \"\\\"Arch Linux Fallback\\\" \\\"root=UUID=${rootuuid} rw add_efi_memmap initrd=/initramfs-linux-fallback.img\\\"\" >> /mnt/efi/refind_linux.conf"
-  echo "echo \"\\\"Arch Linux Terminal\\\" \\\"root=UUID=${rootuuid} rw add_efi_memmap systemd.unit=multi-user.target\\\"\" >> /mnt/efi/refind_linux.conf"
-
-  pacstrap /mnt refind-efi
-  archchroot refindbootloaderinstall ${realrootdev}
-  rootuuid=$(blkid -s UUID -o value ${realrootdev})
-  echo "\"Arch Linux         \" \"root=UUID=${rootuuid} rw add_efi_memmap\"" >/mnt/efi/refind_linux.conf
-  echo "\"Arch Linux Fallback\" \"root=UUID=${rootuuid} rw add_efi_memmap initrd=/initramfs-linux-fallback.img\"" >>/mnt/efi/refind_linux.conf
-  echo "\"Arch Linux Terminal\" \"root=UUID=${rootuuid} rw add_efi_memmap systemd.unit=multi-user.target\"" >>/mnt/efi/refind_linux.conf
+  kernelsel="$(cat kernelsel)"
+  # make readable /etc/mkinitcpio.conf
+  grep -v '^#' /mnt/etc/mkinitcpio.conf | tee /mnt/etc/mkinitcpio.conf >/dev/null
+  sed -i -e 's/base udev/base systemd/g' /mnt/etc/mkinitcpio.conf
+  # Change the preset file to generate a Unified Kernel Image
+  sed -i \
+    -e '/^#ALL_config/s/^#//' \
+    -e '/^#default_uki/s/^#//' \
+    -e '/^#default_options/s/^#//' \
+    -e 's/default_image=/#default_image=/g' \
+    -e "s/PRESETS=('default' 'fallback')/PRESETS=('default')/g" \
+    /mnt/etc/mkinitcpio.d/"$kernelsel".preset
+  # Read the UKI setting and create the folder structure otherwise mkinitcpio will crash
+  declare $(grep default_uki /mnt/etc/mkinitcpio.d/"$kernelsel".preset)
+  arch-chroot /mnt mkdir -p "$(dirname "${default_uki//\"/}")"
+  archchroot genmkinitcpio
   pressanykey
 }
-archrefindinstallchroot() {
-  #--usedefault /dev/sdXY --alldrivers
-  echo "refind-install"
-  refind-install
-  isvbox=$(lspci | grep "VirtualBox G")
-  if [ "${isvbox}" ]; then
-    echo "VirtualBox detected, creating startup.nsh..."
-    echo "\EFI\refind\refind_x64.efi" >/efi/startup.nsh
+archgenmkinitcpiochroot() {
+  echo "mkinitcpio -P"
+  mkinitcpio -P
+  exit
+}
+
+disablewatchdog() {
+  presentcmdline=$(cat /mnt/etc/kernel/cmdline)
+  if (cpumodel "intel"); then
+    intelwatchdog="modprobe.blacklist=iTCO_wdt"
+    if [ -f /mnt/etc/kernel/cmdline ]; then
+      if (echo $presentcmdline | grep "$intelwatchdog" >/dev/null); then
+        clear
+        echo "$intelwatchdog is already exist."
+        pressanykey
+      else
+        clear
+        echo "echo \"$presentcmdline $intelwatchdog\" >/mnt/etc/kernel/cmdline"
+        echo "$presentcmdline $intelwatchdog" >/mnt/etc/kernel/cmdline
+        pressanykey
+      fi
+    fi
+  elif (cpumodel "amd"); then
+    if (echo $presentcmdline | grep "nowatchdog" >/dev/null); then
+      clear
+      echo "nowatchdog is already exist"
+      pressanykey
+    else
+      clear
+      echo "echo \"$presentcmdline "nowatchdog"\" >/mnt/etc/kernel/cmdline"
+      echo "$presentcmdline "nowatchdog"" >/mnt/etc/kernel/cmdline
+      pressanykey
+    fi
+    echo "printf \"%s\\\n\" \"# watchdog\" \"blacklist sp5100_tco\" >/mnt/etc/modprobe.d/blacklist-watchdog.conf"
+    printf "%s\n" "# watchdog" "blacklist sp5100_tco" >/mnt/etc/modprobe.d/blacklist-watchdog.conf
+    pressanykey
+  fi
+}
+
+archeditmkinitcpio() {
+  ${EDITOR} /mnt/etc/mkinitcpio.conf
+  if (dialog --backtitle "${apptitle}" --title "Edit mkinitcpio.conf" --yesno "Generate mkinitcpio ?" 0 0); then
+    clear
+    archchroot genmkinitcpio
+    pressanykey
   fi
 }
 
@@ -1466,10 +1336,7 @@ if [ "${chroot}" = "1" ]; then
   'settimeutc') archsettimeutcchroot ;;
   'settimelocal') archsettimelocalchroot ;;
   'genmkinitcpio') archgenmkinitcpiochroot ;;
-  'grubinstall') archgrubinstallchroot ;;
   'asusg14repo') asusg14repo ;;
-  'systemdbootloaderinstall') archsystemdinstallchroot ${args} ;;
-  'refindbootloaderinstall') archrefindinstallchroot ${args} ;;
   esac
 else
   pacman -Sy --needed arch-install-scripts neovim dialog
