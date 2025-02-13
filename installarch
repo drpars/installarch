@@ -1053,13 +1053,8 @@ archgenmkinitcpio() {
   # Read the UKI setting and create the folder structure otherwise mkinitcpio will crash
   declare $(grep default_uki /mnt/etc/mkinitcpio.d/"$kernelsel".preset)
   arch-chroot /mnt mkdir -p "$(dirname "${default_uki//\"/}")"
-  archchroot genmkinitcpio
+  arch-chroot mkinitcpio -P
   pressanykey
-}
-archgenmkinitcpiochroot() {
-  echo "mkinitcpio -P"
-  mkinitcpio -P
-  exit
 }
 
 disablewatchdog() {
