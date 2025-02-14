@@ -1053,7 +1053,7 @@ archgenmkinitcpio() {
   # Read the UKI setting and create the folder structure otherwise mkinitcpio will crash
   declare $(grep default_uki /mnt/etc/mkinitcpio.d/"$kernelsel".preset)
   arch-chroot /mnt mkdir -p "$(dirname "${default_uki//\"/}")"
-  arch-chroot mkinitcpio -P
+  arch-chroot /mnt mkinitcpio -P
   pressanykey
 }
 
@@ -1094,7 +1094,7 @@ archeditmkinitcpio() {
   ${EDITOR} /mnt/etc/mkinitcpio.conf
   if (dialog --backtitle "${apptitle}" --title "Edit mkinitcpio.conf" --yesno "Generate mkinitcpio ?" 0 0); then
     clear
-    arch-chroot mkinitcpio -P
+    arch-chroot /mnt mkinitcpio -P
     pressanykey
   fi
 }
