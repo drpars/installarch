@@ -1,6 +1,6 @@
 #!/bin/bash
 
-  apptitle="Arch Linux Installation"
+apptitle="Arch Linux Installation"
 fspkgs=""
 
 mainmenu() {
@@ -1040,7 +1040,7 @@ archgenmkinitcpio() {
   clear
   kernelsel="$(cat kernelsel)"
   # make readable /etc/mkinitcpio.conf
-  grep -v '^#' /mnt/etc/mkinitcpio.conf > /mnt/etc/mkinitcpio.conf.tmp && mv /mnt/etc/mkinitcpio.conf.tmp /mnt/etc/mkinitcpio.conf
+  grep -v '^#' /mnt/etc/mkinitcpio.conf >/mnt/etc/mkinitcpio.conf.tmp && mv /mnt/etc/mkinitcpio.conf.tmp /mnt/etc/mkinitcpio.conf
   sed -i -e 's/base udev/base systemd/g' /mnt/etc/mkinitcpio.conf
   # Change the preset file to generate a Unified Kernel Image
   sed -i \
