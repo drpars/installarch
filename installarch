@@ -1,6 +1,6 @@
 #!/bin/bash
 
-apptitle="Arch Linux Installation"
+  apptitle="Arch Linux Installation"
 fspkgs=""
 
 mainmenu() {
