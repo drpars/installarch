@@ -553,11 +553,50 @@ installbase() {
 
   clear
   echo "pacstrap /mnt ${pkgs}"
+  # unifiedkernelinstall
   pacstrap /mnt ${pkgs}
   if [ ! -z $numpkg ]; then
     sed -i "s/.*ParallelDownloads.*/ParallelDownloads = ${numpkg}/" /mnt/etc/pacman.conf
   fi
   pressanykey
+}
+
+unifiedkernelinstall() {
+  local preset_dir="/etc/mkinitcpio.d"
+  local preset_file="${preset_dir}/${kernel}.preset"
+  local splash_path="/usr/share/systemd/bootctl/splash-arch.bmp"
+
+  # Create directory if it doesn't exist
+  sudo mkdir -p "$preset_dir" || {
+    echo "Error: Failed to create directory $preset_dir" >&2
+    return 1
+  }
+
+  # Create preset file with error checking
+  if ! sudo tee "$preset_file" >/dev/null <<EOF
+# mkinitcpio preset file for the $kernel package
+ALL_config="/etc/mkinitcpio.conf"
+ALL_kver="/boot/vmlinuz-$kernel"
+
+PRESETS=('default' 'fallback')
+
+# Default preset (normal boot)
+# default_config="/etc/mkinitcpio.conf"
+default_uki="/efi/EFI/Linux/arch-$kernel.efi"
+default_options="--splash $splash_path"
+
+# Fallback preset (recovery mode)
+# fallback_config="/etc/mkinitcpio.conf"
+# fallback_image="/boot/initramfs-$kernel-fallback.img"
+fallback_uki="/efi/EFI/Linux/arch-$kernel-fallback.efi"
+fallback_options="-S autodetect"
+EOF 
+  then
+    echo "Error: Failed to write preset file $preset_file" >&2
+    return 1
+  fi
+
+  echo "Preset file created successfully: $preset_file"
 }
 
 unmountdevices() {
