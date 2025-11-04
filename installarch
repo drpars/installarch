@@ -590,7 +590,7 @@ default_options="--splash $splash_path"
 # fallback_image="/boot/initramfs-$kernel-fallback.img"
 fallback_uki="/efi/EFI/Linux/arch-$kernel-fallback.efi"
 fallback_options="-S autodetect"
-EOF 
+EOF
   then
     echo "Error: Failed to write preset file $preset_file" >&2
     return 1
