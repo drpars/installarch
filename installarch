@@ -573,7 +573,7 @@ unifiedkernelinstall() {
   }
 
   # Create preset file with error checking
-  if ! sudo tee "$preset_file" >/dev/null <<EOF
+  sudo tee "$preset_file" >/dev/null <<EOF
 # mkinitcpio preset file for the $kernel package
 ALL_config="/etc/mkinitcpio.conf"
 ALL_kver="/boot/vmlinuz-$kernel"
@@ -591,12 +591,13 @@ default_options="--splash $splash_path"
 fallback_uki="/efi/EFI/Linux/arch-$kernel-fallback.efi"
 fallback_options="-S autodetect"
 EOF
-  then
+  if [[ "$?" -ne 0 ]]; then
     echo "Error: Failed to write preset file $preset_file" >&2
     return 1
   fi
 
   echo "Preset file created successfully: $preset_file"
+  return 0
 }
 
 unmountdevices() {
@@ -620,6 +621,7 @@ archmenu() {
   options+=("Set Computer Name" "/etc/hostname")
   options+=("Set Keyboard Layout" "/etc/vconsole.conf")
   options+=("Set Font" "/etc/vconsole.conf")
+  options+=("Set Terminus Font" "ter-v16n --> /etc/vconsole.conf")
   options+=("Set Locale" "/etc/locale.conf, /etc/locale.gen")
   options+=("Set Time" "/etc/localtime")
   options+=("Set root password" "")
@@ -648,6 +650,10 @@ archmenu() {
       ;;
     "Set Font")
       archsetfont
+      nextitem="Set Terminus Font"
+      ;;
+    "Set Terminus Font")
+      install_terminus_font
       nextitem="Set Locale"
       ;;
     "Set Locale")
@@ -772,6 +778,36 @@ archsetfont() {
   fi
 }
 
+install_terminus_font() {
+  local font_package="terminus-font"
+  local config_file="/etc/vconsole.conf"
+  local font_setting="ter-v16n"
+  
+  echo "Checking for Terminus font package..."
+  
+  # 1. Check if the Terminus font package is installed (using the cleaner 'Qq')
+  if pacman -Qq "$font_package" > /dev/null 2>&1; then
+    echo "Terminus font is installed. Configuring vconsole.conf..."
+
+    # 2. Check if the FONT= line already exists in the configuration file
+    if grep -q "^FONT=" "$config_file"; then
+      # If the FONT line exists, update its value using sed (Overwrite)
+      sudo sed -i "/^FONT=/c\FONT=$font_setting" "$config_file"
+      echo "$config_file: FONT setting updated to '$font_setting'."
+    else
+      # If the FONT line does NOT exist, append the new line (Extra Line)
+      echo "FONT=$font_setting" | sudo tee -a "$config_file" > /dev/null
+      echo "$config_file: FONT setting added as a new line: '$font_setting'."
+    fi
+
+    echo "Configuration complete. Reboot is required to apply the new font in TTY."
+    return 0
+  else
+    echo "Error: Terminus font package ('$font_package') is not found."
+    return 1
+  fi
+}
+
 archsetlocale() {
   items=$(ls /usr/share/i18n/locales)
   options=()
@@ -802,7 +838,7 @@ archsetlocalechroot() {
 }
 
 archsettime() {
-  items=$(ls -l /mnt/usr/share/zoneinfo/ | grep '^d' | gawk -F':[0-9]* ' '/:/{print $2}')
+  items=$(ls -l /mnt/usr/share/zoneinfo/ | grep '^d' | grep -vE 'posix|right' | gawk -F':[0-9]* ' '/:/{print $2}')
   options=()
   for item in ${items}; do
     options+=("${item}" "")
