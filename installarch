@@ -780,13 +780,13 @@ archsetfont() {
 
 install_terminus_font() {
   local font_package="terminus-font"
-  local config_file="/etc/vconsole.conf"
-  local font_setting="ter-v16n"
-  
+  local config_file="/mnt/etc/vconsole.conf"
+  local font_setting="ter-v16b"
+
   echo "Checking for Terminus font package..."
-  
+
   # 1. Check if the Terminus font package is installed (using the cleaner 'Qq')
-  if pacman -Qq "$font_package" > /dev/null 2>&1; then
+  if pacman -Qq "$font_package" >/dev/null 2>&1; then
     echo "Terminus font is installed. Configuring vconsole.conf..."
 
     # 2. Check if the FONT= line already exists in the configuration file
@@ -796,7 +796,7 @@ install_terminus_font() {
       echo "$config_file: FONT setting updated to '$font_setting'."
     else
       # If the FONT line does NOT exist, append the new line (Extra Line)
-      echo "FONT=$font_setting" | sudo tee -a "$config_file" > /dev/null
+      echo "FONT=$font_setting" | sudo tee -a "$config_file" >/dev/null
       echo "$config_file: FONT setting added as a new line: '$font_setting'."
     fi
 
@@ -913,30 +913,95 @@ archsetrootpasswordchroot() {
 }
 
 archcreateuser() {
-  username=$(dialog --backtitle "${apptitle}" --title "User Name :" --inputbox "" 0 0 "" 3>&1 1>&2 2>&3)
+  local username userpasswrd
+  local apptitle="Arch Linux Installation"
 
-  userpasswrd=$(dialog --backtitle "${apptitle}" --title "User Password :" --inputbox "" 0 0 "" 3>&1 1>&2 2>&3)
-  if [ "$?" = "0" ]; then
+  # --- 1. Get User Input Securely and Filter ---
 
-    msg="User information to be created!\n\n"
-    msg=${msg}"Name : "${username}"\n"
-    msg=${msg}"Password : "${userpasswrd}"\n"
-    if (dialog --backtitle "${apptitle}" --title "Do you accept ?" --yesno "${msg}" 0 0); then
-      clear
-      echo "arch-chroot /mnt useradd -m $username"
-      arch-chroot /mnt useradd -m "$username"
-      echo "echo $username:$userpasswrd | chpasswd -R /mnt"
-      echo $username:$userpasswrd | chpasswd -R /mnt
-      pressanykey
-      if (dialog --backtitle "${apptitle}" --title "Grant superuser privilege for :" --yesno "$username\n\n" 0 0); then
-        clear
-        echo "sed -i '/# %wheel ALL=(ALL:ALL) ALL/s/^# //g' /mnt/etc/sudoers"
-        sed -i '/# %wheel ALL=(ALL:ALL) ALL/s/^# //g' /mnt/etc/sudoers
-        echo "arch-chroot /mnt usermod -aG wheel $username"
-        arch-chroot /mnt usermod -aG wheel $username
-      fi
+  while true; do
+    # Get Username
+    username=$(dialog --backtitle "${apptitle}" --title "1/3: Set Username" --inputbox "Enter the new user's name:\n(Allowed: a-zA-Z0-9_-)" 9 60 "" 3>&1 1>&2 2>&3)
+
+    if [ "$?" != "0" ]; then
+      # User pressed Cancel
+      dialog --backtitle "${apptitle}" --title "ERROR" --msgbox "User creation cancelled." 8 60
+      return 1
     fi
+
+    # Filtering/Validation Check
+    # Check if empty, or contains invalid characters/format (e.g., spaces, metacharacters, too short/long)
+    if [ -z "$username" ]; then
+      dialog --backtitle "${apptitle}" --title "Invalid Input" --msgbox "Username cannot be empty." 8 60
+    elif ! [[ "$username" =~ ^[a-zA-Z0-9_-]{3,32}$ ]]; then
+      dialog --backtitle "${apptitle}" --title "Invalid Input" --msgbox "Username must be between 3 and 32 chars, and contain only letters, numbers, hyphens (-) or underscores (_)." 10 60
+    else
+      break # Input is valid, exit loop
+    fi
+  done
+
+  # Get Password Securely (Masked input)
+  userpasswrd=$(dialog --backtitle "${apptitle}" --title "2/3: Set User Password" --passwordbox "Enter password for '${username}':" 8 60 "" 3>&1 1>&2 2>&3)
+
+  if [ "$?" != "0" ] || [ -z "$userpasswrd" ]; then
+    dialog --backtitle "${apptitle}" --title "ERROR" --msgbox "Password entry cancelled or password is empty." 8 60
+    return 1
+  fi
+
+  # --- 2. Confirmation and Execution ---
+
+  local msg="User to be created:\n\n"
+  msg="${msg}Name: ${username}\n"
+  msg="${msg}Password: (Hidden)\n"
+  msg="${msg}\nDo you confirm the user creation?"
+
+  if (dialog --backtitle "${apptitle}" --title "3/3: Confirm User Details" --yesno "${msg}" 10 60); then
+    clear
+    echo "--- Creating User and Setting Password in /mnt ---"
+
+    # 1. Create user and home directory
+    echo "Running: arch-chroot /mnt useradd -m ${username}"
+    if ! arch-chroot /mnt useradd -m "${username}"; then
+      echo "FATAL ERROR: Failed to create user ${username} with useradd."
+      return 1
+    fi
+
+    # 2. Set password securely and safely (using printf)
+    echo "Running: echo ${username}:[PASSWORD] | arch-chroot /mnt chpasswd"
+
+    # CRITICAL: Use printf and check for chpasswd failure
+    if ! printf "%s:%s\n" "${username}" "${userpasswrd}" | arch-chroot /mnt chpasswd; then
+      # If chpasswd fails (e.g., file permissions error)
+      unset userpasswrd
+      dialog --backtitle "${apptitle}" --title "FATAL ERROR" --msgbox "Failed to set password for ${username}.\nCheck /mnt integrity and retry." 10 60
+      return 1
+    fi
+
+    # CRITICAL: Clear password variable immediately after successful use
+    unset userpasswrd
+
+    # --- 3. Grant Sudo Privilege (Optional) ---
+
+    if (dialog --backtitle "${apptitle}" --title "Superuser Privilege" --yesno "Do you want to grant superuser (sudo) privileges to '${username}' (via the 'wheel' group)?" 10 60); then
+      clear
+      echo "--- Granting Superuser Privilege ---"
+
+      # Uncomment the 'wheel' group line in sudoers file
+      echo "Running: sed -i '/# %wheel ALL=(ALL:ALL) ALL/s/^# //g' /mnt/etc/sudoers"
+      sed -i '/# %wheel ALL=(ALL:ALL) ALL/s/^# //g' /mnt/etc/sudoers
+
+      # Add user to the wheel group
+      echo "Running: arch-chroot /mnt usermod -aG wheel ${username}"
+      arch-chroot /mnt usermod -aG wheel "${username}"
+
+      echo "SUCCESS: Superuser privileges granted to ${username}."
+    fi
+
+    echo "------------------------------------------------"
+    echo "SUCCESS: User ${username} has been created."
     pressanykey
+  else
+    echo "User creation cancelled by user."
+    return 1
   fi
 }
 
@@ -980,6 +1045,7 @@ addrepochroot() {
     clear
     echo "sed -i \"/\[multilib\]/,/Include/\"'s/^#//' /mnt/etc/pacman.conf"
     sed -i "/\[multilib\]/,/Include/"'s/^#//' /mnt/etc/pacman.conf
+    pacman -Sy
     pressanykey
     nextitem="Asus G14 Repository"
     ;;
